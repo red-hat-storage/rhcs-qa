@@ -1,0 +1,7 @@
+tasks:
+- ssh-keys: null
+- ceph-ansible: null
+- rgw-system-test:
+    test: test_acls_all_usrs
+    test_version: v1
+    clients: ['client.0']
