@@ -3,7 +3,7 @@ Thrash -- Simulate random osd failures.
 """
 import contextlib
 import logging
-from tasks import ceph_manager
+import ceph_manager
 from teuthology import misc as teuthology
 
 
@@ -200,13 +200,11 @@ def task(ctx, config):
             'true')
 
     log.info('Beginning thrashosds...')
-    thrash_proc = ceph_manager.OSDThrasher(
+    thrash_proc = ceph_manager.Thrasher(
         cluster_manager,
         config,
-        "OSDThrasher",
         logger=log.getChild('thrasher')
         )
-    ctx.ceph[cluster].thrashers.append(thrash_proc)
     try:
         yield
     finally:

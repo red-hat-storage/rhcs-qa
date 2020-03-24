@@ -22,11 +22,6 @@ function distro_id() {
     echo $ID
 }
 
-function distro_version() {
-    source /etc/os-release
-    echo $VERSION
-}
-
 function install() {
     for package in "$@" ; do
         install_one $package
@@ -50,43 +45,6 @@ function install_one() {
     esac
 }
 
-function install_cmake3_on_xenial {
-    install_pkg_on_ubuntu \
-	ceph-cmake \
-	d278b9d28de0f6b88f56dfe1e8bf684a41577210 \
-	xenial \
-	force \
-	cmake
-}
-
-function install_pkg_on_ubuntu {
-    local project=$1
-    shift
-    local sha1=$1
-    shift
-    local codename=$1
-    shift
-    local force=$1
-    shift
-    local pkgs=$@
-    local missing_pkgs
-    if [ $force = "force" ]; then
-	missing_pkgs="$@"
-    else
-	for pkg in $pkgs; do
-	    if ! dpkg -s $pkg &> /dev/null; then
-		missing_pkgs+=" $pkg"
-	    fi
-	done
-    fi
-    if test -n "$missing_pkgs"; then
-	local shaman_url="https://shaman.ceph.com/api/repos/${project}/master/${sha1}/ubuntu/${codename}/repo"
-	sudo curl --silent --location $shaman_url --output /etc/apt/sources.list.d/$project.list
-	sudo env DEBIAN_FRONTEND=noninteractive apt-get update -y -o Acquire::Languages=none -o Acquire::Translation=none || true
-	sudo env DEBIAN_FRONTEND=noninteractive apt-get install --allow-unauthenticated -y $missing_pkgs
-    fi
-}
-
 #######################################################################
 
 function control_osd() {
@@ -108,7 +66,7 @@ function pool_read_write() {
 
     ceph osd pool delete $test_pool $test_pool --yes-i-really-really-mean-it || return 1
     ceph osd pool create $test_pool 4 || return 1
-    ceph osd pool set $test_pool size $size --yes-i-really-mean-it || return 1
+    ceph osd pool set $test_pool size $size || return 1
     ceph osd pool set $test_pool min_size $size || return 1
     ceph osd pool application enable $test_pool rados
 

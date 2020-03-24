@@ -1,13 +1,10 @@
+
+
 import json
 import logging
 import os
 from textwrap import dedent
 import time
-try:
-    from typing import Optional
-except:
-    # make it work for python2
-    pass
 from teuthology.orchestra.run import CommandFailedError
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
@@ -23,7 +20,7 @@ class FullnessTestCase(CephFSTestCase):
     data_only = False
 
     # Subclasses define how many bytes should be written to achieve fullness
-    pool_capacity = None  # type: Optional[int]
+    pool_capacity = None
     fill_mb = None
 
     # Subclasses define what fullness means to them
@@ -33,10 +30,21 @@ class FullnessTestCase(CephFSTestCase):
     def setUp(self):
         CephFSTestCase.setUp(self)
 
-        mds_status = self.fs.rank_asok(["status"])
+        # These tests just use a single active MDS throughout, so remember its ID
+        # for use in mds_asok calls
+        self.active_mds_id = self.fs.get_active_names()[0]
 
         # Capture the initial OSD map epoch for later use
-        self.initial_osd_epoch = mds_status['osdmap_epoch_barrier']
+        self.initial_osd_epoch = json.loads(
+            self.fs.mon_manager.raw_cluster_cmd("osd", "dump", "--format=json").strip()
+        )['epoch']
+
+        # Check the initial barrier epoch on the MDS: this should be
+        # set to the latest map at MDS startup.  We do this check in
+        # setUp to get in there before subclasses might touch things
+        # in their own setUp functions.
+        self.assertGreaterEqual(self.fs.mds_asok(["status"], mds_id=self.active_mds_id)['osdmap_epoch_barrier'],
+                                self.initial_osd_epoch)
 
     def test_barrier(self):
         """
@@ -83,7 +91,7 @@ class FullnessTestCase(CephFSTestCase):
         self.assertEqual(mount_b_epoch, mount_b_initial_epoch)
 
         # Set a barrier on the MDS
-        self.fs.rank_asok(["osdmap", "barrier", new_epoch.__str__()])
+        self.fs.mds_asok(["osdmap", "barrier", new_epoch.__str__()], mds_id=self.active_mds_id)
 
         # Do an operation on client B, witness that it ends up with
         # the latest OSD map from the barrier.  This shouldn't generate any
@@ -153,7 +161,7 @@ class FullnessTestCase(CephFSTestCase):
         # while in the full state.
         osd_epoch = json.loads(self.fs.mon_manager.raw_cluster_cmd("osd", "dump", "--format=json-pretty"))['epoch']
         self.wait_until_true(
-            lambda: self.fs.rank_asok(['status'])['osdmap_epoch'] >= osd_epoch,
+            lambda: self.fs.mds_asok(['status'], mds_id=self.active_mds_id)['osdmap_epoch'] >= osd_epoch,
             timeout=10)
 
         if not self.data_only:
@@ -182,7 +190,7 @@ class FullnessTestCase(CephFSTestCase):
         # be applying the free space policy
         osd_epoch = json.loads(self.fs.mon_manager.raw_cluster_cmd("osd", "dump", "--format=json-pretty"))['epoch']
         self.wait_until_true(
-            lambda: self.fs.rank_asok(['status'])['osdmap_epoch'] >= osd_epoch,
+            lambda: self.fs.mds_asok(['status'], mds_id=self.active_mds_id)['osdmap_epoch'] >= osd_epoch,
             timeout=10)
 
         # Now I should be able to write again
@@ -239,12 +247,12 @@ class FullnessTestCase(CephFSTestCase):
             import os
 
             # Write some buffered data through before going full, all should be well
-            print("writing some data through which we expect to succeed")
+            print "writing some data through which we expect to succeed"
             bytes = 0
             f = os.open("{file_path}", os.O_WRONLY | os.O_CREAT)
-            bytes += os.write(f, b'a' * 512 * 1024)
+            bytes += os.write(f, 'a' * 512 * 1024)
             os.fsync(f)
-            print("fsync'ed data successfully, will now attempt to fill fs")
+            print "fsync'ed data successfully, will now attempt to fill fs"
 
             # Okay, now we're going to fill up the filesystem, and then keep
             # writing until we see an error from fsync.  As long as we're doing
@@ -253,27 +261,27 @@ class FullnessTestCase(CephFSTestCase):
             full = False
 
             for n in range(0, int({fill_mb} * 0.9)):
-                bytes += os.write(f, b'x' * 1024 * 1024)
-                print("wrote {{0}} bytes via buffered write, may repeat".format(bytes))
-            print("done writing {{0}} bytes".format(bytes))
+                bytes += os.write(f, 'x' * 1024 * 1024)
+                print "wrote {{0}} bytes via buffered write, may repeat".format(bytes)
+            print "done writing {{0}} bytes".format(bytes)
 
             # OK, now we should sneak in under the full condition
             # due to the time it takes the OSDs to report to the
             # mons, and get a successful fsync on our full-making data
             os.fsync(f)
-            print("successfully fsync'ed prior to getting full state reported")
+            print "successfully fsync'ed prior to getting full state reported"
 
             # buffered write, add more dirty data to the buffer
-            print("starting buffered write")
+            print "starting buffered write"
             try:
                 for n in range(0, int({fill_mb} * 0.2)):
-                    bytes += os.write(f, b'x' * 1024 * 1024)
-                    print("sleeping a bit as we've exceeded 90% of our expected full ratio")
+                    bytes += os.write(f, 'x' * 1024 * 1024)
+                    print "sleeping a bit as we've exceeded 90% of our expected full ratio"
                     time.sleep({full_wait})
             except OSError:
                 pass;
 
-            print("wrote, now waiting 30s and then doing a close we expect to fail")
+            print "wrote, now waiting 30s and then doing a close we expect to fail"
 
             # Wait long enough for a background flush that should fail
             time.sleep(30)
@@ -283,7 +291,7 @@ class FullnessTestCase(CephFSTestCase):
                 try:
                     os.close(f)
                 except OSError:
-                    print("close() returned an error as expected")
+                    print "close() returned an error as expected"
                 else:
                     raise RuntimeError("close() failed to raise error")
             else:
@@ -310,12 +318,12 @@ class FullnessTestCase(CephFSTestCase):
             import os
 
             # Write some buffered data through before going full, all should be well
-            print("writing some data through which we expect to succeed")
+            print "writing some data through which we expect to succeed"
             bytes = 0
             f = os.open("{file_path}", os.O_WRONLY | os.O_CREAT)
-            bytes += os.write(f, b'a' * 4096)
+            bytes += os.write(f, 'a' * 4096)
             os.fsync(f)
-            print("fsync'ed data successfully, will now attempt to fill fs")
+            print "fsync'ed data successfully, will now attempt to fill fs"
 
             # Okay, now we're going to fill up the filesystem, and then keep
             # writing until we see an error from fsync.  As long as we're doing
@@ -325,26 +333,26 @@ class FullnessTestCase(CephFSTestCase):
 
             for n in range(0, int({fill_mb} * 1.1)):
                 try:
-                    bytes += os.write(f, b'x' * 1024 * 1024)
-                    print("wrote bytes via buffered write, moving on to fsync")
+                    bytes += os.write(f, 'x' * 1024 * 1024)
+                    print "wrote bytes via buffered write, moving on to fsync"
                 except OSError as e:
-                    print("Unexpected error %s from write() instead of fsync()" % e)
+                    print "Unexpected error %s from write() instead of fsync()" % e
                     raise
 
                 try:
                     os.fsync(f)
-                    print("fsync'ed successfully")
+                    print "fsync'ed successfully"
                 except OSError as e:
-                    print("Reached fullness after %.2f MB" % (bytes / (1024.0 * 1024.0)))
+                    print "Reached fullness after %.2f MB" % (bytes / (1024.0 * 1024.0))
                     full = True
                     break
                 else:
-                    print("Not full yet after %.2f MB" % (bytes / (1024.0 * 1024.0)))
+                    print "Not full yet after %.2f MB" % (bytes / (1024.0 * 1024.0))
 
                 if n > {fill_mb} * 0.9:
                     # Be cautious in the last region where we expect to hit
                     # the full condition, so that we don't overshoot too dramatically
-                    print("sleeping a bit as we've exceeded 90% of our expected full ratio")
+                    print "sleeping a bit as we've exceeded 90% of our expected full ratio"
                     time.sleep({full_wait})
 
             if not full:
@@ -353,9 +361,9 @@ class FullnessTestCase(CephFSTestCase):
             # close() should not raise an error because we already caught it in
             # fsync.  There shouldn't have been any more writeback errors
             # since then because all IOs got cancelled on the full flag.
-            print("calling close")
+            print "calling close"
             os.close(f)
-            print("close() did not raise error")
+            print "close() did not raise error"
 
             os.unlink("{file_path}")
             """)
@@ -367,8 +375,8 @@ class TestQuotaFull(FullnessTestCase):
     """
     Test per-pool fullness, which indicates quota limits exceeded
     """
-    pool_capacity = 1024 * 1024 * 32  # arbitrary low-ish limit
-    fill_mb = pool_capacity / (1024 * 1024)  # type: ignore
+    pool_capacity = 1024 * 1024 * 32   # arbitrary low-ish limit
+    fill_mb = pool_capacity / (1024 * 1024)
 
     # We are only testing quota handling on the data pool, not the metadata
     # pool.

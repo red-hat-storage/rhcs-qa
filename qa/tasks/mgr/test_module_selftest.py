@@ -23,7 +23,6 @@ class TestModuleSelftest(MgrTestCase):
     MGRS_REQUIRED = 1
 
     def setUp(self):
-        super(TestModuleSelftest, self).setUp()
         self.setup_mgrs()
 
     def _selftest_plugin(self, module_name):
@@ -51,9 +50,8 @@ class TestModuleSelftest(MgrTestCase):
     def test_diskprediction_local(self):
         self._selftest_plugin("diskprediction_local")
 
-    # Not included in qa/packages/packages.yaml
-    #def test_diskprediction_cloud(self):
-    #    self._selftest_plugin("diskprediction_cloud")
+    def test_diskprediction_cloud(self):
+        self._selftest_plugin("diskprediction_cloud")
 
     def test_telegraf(self):
         self._selftest_plugin("telegraf")
@@ -79,10 +77,6 @@ class TestModuleSelftest(MgrTestCase):
 
     def test_crash(self):
         self._selftest_plugin("crash")
-
-    def test_orchestrator(self):
-        self._selftest_plugin("orchestrator")
-
 
     def test_selftest_config_update(self):
         """

@@ -1,24 +1,9 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
-from contextlib import contextmanager
 import errno
 import fcntl
 import signal
 import struct
-
-@contextmanager
-def timeout(seconds):
-    def timeout_handler(signum, frame):
-        raise InterruptedError
-
-    orig_handler = signal.signal(signal.SIGALRM, timeout_handler)
-    try:
-        signal.alarm(seconds)
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, orig_handler)
-
 
 """
 introduced by Linux 3.15
@@ -26,6 +11,10 @@ introduced by Linux 3.15
 fcntl.F_OFD_GETLK = 36
 fcntl.F_OFD_SETLK = 37
 fcntl.F_OFD_SETLKW = 38
+
+
+def handler(signum, frame):
+    pass
 
 
 def main():
@@ -37,13 +26,15 @@ def main():
     """
     is flock interruptible?
     """
-    with timeout(5):
-        try:
-            fcntl.flock(f2, fcntl.LOCK_EX)
-        except InterruptedError:
-            pass
-        else:
-            raise RuntimeError("expect flock to block")
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(5)
+    try:
+        fcntl.flock(f2, fcntl.LOCK_EX)
+    except IOError as e:
+        if e.errno != errno.EINTR:
+            raise
+    else:
+        raise RuntimeError("expect flock to block")
 
     fcntl.flock(f1, fcntl.LOCK_UN)
 
@@ -63,14 +54,16 @@ def main():
     """
     is posix lock interruptible?
     """
-    with timeout(5):
-        try:
-            lockdata = struct.pack('hhllhh', fcntl.F_WRLCK, 0, 0, 0, 0, 0)
-            fcntl.fcntl(f2, fcntl.F_OFD_SETLKW, lockdata)
-        except InterruptedError:
-            pass
-        else:
-            raise RuntimeError("expect posix lock to block")
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(5)
+    try:
+        lockdata = struct.pack('hhllhh', fcntl.F_WRLCK, 0, 0, 0, 0, 0)
+        fcntl.fcntl(f2, fcntl.F_OFD_SETLKW, lockdata)
+    except IOError as e:
+        if e.errno != errno.EINTR:
+            raise
+    else:
+        raise RuntimeError("expect posix lock to block")
 
     """
     file handler 2 should still hold lock on 10~10

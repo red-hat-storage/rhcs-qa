@@ -6,6 +6,7 @@ exceed the limits of how many caps/inodes they should hold.
 
 import logging
 from textwrap import dedent
+from unittest import SkipTest
 from teuthology.orchestra.run import CommandFailedError
 from tasks.cephfs.cephfs_test_case import CephFSTestCase, needs_trimming
 from tasks.cephfs.fuse_mount import FuseMount
@@ -38,18 +39,15 @@ class TestClientLimits(CephFSTestCase):
         :param use_subdir: whether to put test files in a subdir or use root
         """
 
-        # Set MDS cache memory limit to a low value that will make the MDS to
-        # ask the client to trim the caps.
-        cache_memory_limit = "1K"
+        cache_size = open_files/2
 
-        self.set_conf('mds', 'mds_cache_memory_limit', cache_memory_limit)
+        self.set_conf('mds', 'mds cache size', cache_size)
         self.set_conf('mds', 'mds_recall_max_caps', open_files/2)
         self.set_conf('mds', 'mds_recall_warning_threshold', open_files)
         self.fs.mds_fail_restart()
         self.fs.wait_for_daemons()
 
         mds_min_caps_per_client = int(self.fs.get_config("mds_min_caps_per_client"))
-        mds_max_caps_per_client = int(self.fs.get_config("mds_max_caps_per_client"))
         mds_recall_warning_decay_rate = self.fs.get_config("mds_recall_warning_decay_rate")
         self.assertTrue(open_files >= mds_min_caps_per_client)
 
@@ -90,7 +88,7 @@ class TestClientLimits(CephFSTestCase):
             num_caps = self.get_session(mount_a_client_id)['num_caps']
             if num_caps <= mds_min_caps_per_client:
                 return True
-            elif num_caps <= mds_max_caps_per_client:
+            elif num_caps < cache_size:
                 return True
             else:
                 return False
@@ -118,7 +116,7 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            self.skipTest("Require FUSE client to inject client release failure")
+            raise SkipTest("Require FUSE client to inject client release failure")
 
         self.set_conf('client.{0}'.format(self.mount_a.client_id), 'client inject release failure', 'true')
         self.mount_a.teardown()
@@ -160,7 +158,7 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            self.skipTest("Require FUSE client to inject client release failure")
+            raise SkipTest("Require FUSE client to inject client release failure")
 
         self.set_conf('client', 'client inject fixed oldest tid', 'true')
         self.mount_a.teardown()
@@ -185,7 +183,7 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            self.skipTest("Require FUSE client to inject client release failure")
+            raise SkipTest("Require FUSE client to inject client release failure")
 
         if mount_subdir:
             # fuse assigns a fix inode number (1) to root inode. But in mounting into

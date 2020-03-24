@@ -4,6 +4,8 @@ meta:
 stress-tasks:
   - full_sequential:
      - sequential:
+       - rgw:
+         - client.0
        - ragweed:
            client.0:
              default-branch: ceph-nautilus

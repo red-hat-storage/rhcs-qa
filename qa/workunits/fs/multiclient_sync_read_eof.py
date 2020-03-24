@@ -1,7 +1,9 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
 import argparse
 import os
+import sys
+import time
 
 def main():
     parser = argparse.ArgumentParser()

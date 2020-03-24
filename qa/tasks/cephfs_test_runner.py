@@ -22,11 +22,7 @@ class DecoratingLoader(loader.TestLoader):
 
     def _apply_params(self, obj):
         for k, v in self._params.items():
-            if obj.__class__ is type:
-                cls = obj
-            else:
-                cls = obj.__class__
-            setattr(cls, k, v)
+            setattr(obj, k, v)
 
     def loadTestsFromTestCase(self, testCaseClass):
         self._apply_params(testCaseClass)
@@ -137,7 +133,7 @@ def task(ctx, config):
 
     # Mount objects, sorted by ID
     if hasattr(ctx, 'mounts'):
-        mounts = [v for k, v in sorted(ctx.mounts.items(), key=lambda mount: mount[0])]
+        mounts = [v for k, v in sorted(ctx.mounts.items(), lambda a, b: cmp(a[0], b[0]))]
     else:
         # The test configuration has a filesystem but no fuse/kclient mounts
         mounts = []

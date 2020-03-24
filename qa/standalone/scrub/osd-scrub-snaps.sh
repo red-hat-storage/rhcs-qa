@@ -30,7 +30,7 @@ function run() {
     export CEPH_MON="127.0.0.1:7121" # git grep '\<7121\>' : there must be only one
     export CEPH_ARGS
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
-    CEPH_ARGS+="--mon-host=$CEPH_MON "
+    CEPH_ARGS+="--mon-host=$CEPH_MON --osd-objectstore=filestore"
 
     export -n CEPH_CLI_TEST_DUP_COMMAND
     local funcs=${@:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
@@ -100,12 +100,12 @@ function create_scenario() {
     JSON="$(ceph-objectstore-tool --data-path $dir/${osd} --op list obj5 | grep \"snapid\":1)"
     OBJ5SAVE="$JSON"
     # Starts with a snapmap
-    ceph-kvstore-tool bluestore-kv $dir/${osd} list 2> /dev/null > $dir/drk.log
-    grep "^m.*SNA_.*[.]1[.]obj5[.][.]$" $dir/drk.log || return 1
+    ceph-osdomap-tool --no-mon-config --omap-path $dir/${osd}/current/omap --command dump-raw-keys > $dir/drk.log
+    grep "_USER_[0-9]*_USER_,MAP_.*[.]1[.]obj5[.][.]" $dir/drk.log || return 1
     ceph-objectstore-tool --data-path $dir/${osd} --rmtype nosnapmap "$JSON" remove || return 1
     # Check that snapmap is stil there
-    ceph-kvstore-tool bluestore-kv $dir/${osd} list 2> /dev/null > $dir/drk.log
-    grep "^m.*SNA_.*[.]1[.]obj5[.][.]$" $dir/drk.log || return 1
+    ceph-osdomap-tool --no-mon-config --omap-path $dir/${osd}/current/omap --command dump-raw-keys > $dir/drk.log
+    grep "_USER_[0-9]*_USER_,MAP_.*[.]1[.]obj5[.][.]" $dir/drk.log || return 1
     rm -f $dir/drk.log
 
     JSON="$(ceph-objectstore-tool --data-path $dir/${osd} --op list obj5 | grep \"snapid\":4)"
@@ -120,13 +120,13 @@ function create_scenario() {
     ceph-objectstore-tool --data-path $dir/${osd} "$JSON" remove || return 1
 
     # Starts with a snapmap
-    ceph-kvstore-tool bluestore-kv $dir/${osd} list 2> /dev/null > $dir/drk.log
-    grep "^m.*SNA_.*[.]7[.]obj16[.][.]$" $dir/drk.log || return 1
+    ceph-osdomap-tool --no-mon-config --omap-path $dir/${osd}/current/omap --command dump-raw-keys > $dir/drk.log
+    grep "_USER_[0-9]*_USER_,MAP_.*[.]7[.]obj16[.][.]" $dir/drk.log || return 1
     JSON="$(ceph-objectstore-tool --data-path $dir/${osd} --op list obj16 | grep \"snapid\":7)"
     ceph-objectstore-tool --data-path $dir/${osd} --rmtype snapmap "$JSON" remove || return 1
     # Check that snapmap is now removed
-    ceph-kvstore-tool bluestore-kv $dir/${osd} list 2> /dev/null > $dir/drk.log
-    ! grep "^m.*SNA_.*[.]7[.]obj16[.][.]$" $dir/drk.log || return 1
+    ceph-osdomap-tool --no-mon-config --omap-path $dir/${osd}/current/omap --command dump-raw-keys > $dir/drk.log
+    ! grep "_USER_[0-9]*_USER_,MAP_.*[.]7[.]obj16[.][.]" $dir/drk.log || return 1
     rm -f $dir/drk.log
 
     JSON="$(ceph-objectstore-tool --data-path $dir/${osd} --head --op list obj2)"
@@ -201,10 +201,8 @@ function TEST_scrub_snaps() {
 
     for osd in $(seq 0 $(expr $OSDS - 1))
     do
-      activate_osd $dir $osd || return 1
+      run_osd $dir $osd || return 1
     done
-
-    wait_for_clean || return 1
 
     local pgid="${poolid}.0"
     if ! pg_scrub "$pgid" ; then
@@ -224,19 +222,19 @@ function TEST_scrub_snaps() {
     # The injected snapshot errors with a single copy pool doesn't
     # see object errors because all the issues are detected by
     # comparing copies.
-    jq "$jqfilter" << EOF | python3 -c "$sortkeys" > $dir/checkcsjson
+    jq "$jqfilter" << EOF | python -c "$sortkeys" > $dir/checkcsjson
 {
     "epoch": 17,
     "inconsistents": []
 }
 EOF
 
-    jq "$jqfilter" $dir/json | python3 -c "$sortkeys" > $dir/csjson
+    jq "$jqfilter" $dir/json | python -c "$sortkeys" > $dir/csjson
     multidiff $dir/checkcsjson $dir/csjson || test $getjson = "yes" || return 1
 
     rados list-inconsistent-snapset $pgid > $dir/json || return 1
 
-    jq "$jqfilter" << EOF | python3 -c "$sortkeys" > $dir/checkcsjson
+    jq "$jqfilter" << EOF | python -c "$sortkeys" > $dir/checkcsjson
 {
   "inconsistents": [
     {
@@ -345,7 +343,12 @@ EOF
       "locator": "",
       "snap": "head",
       "snapset": {
-        "seq": 1,
+        "snap_context": {
+          "seq": 1,
+          "snaps": [
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -371,7 +374,12 @@ EOF
       "nspace": "",
       "name": "obj11",
       "snapset": {
-        "seq": 1,
+        "snap_context": {
+          "seq": 1,
+          "snaps": [
+            1
+          ]
+        },
         "clones": []
       }
     },
@@ -381,7 +389,12 @@ EOF
       "locator": "",
       "snap": "head",
       "snapset": {
-        "seq": 1,
+        "snap_context": {
+          "seq": 1,
+          "snaps": [
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -427,7 +440,14 @@ EOF
       "nspace": "",
       "name": "obj3",
       "snapset": {
-        "seq": 3,
+        "snap_context": {
+          "seq": 3,
+          "snaps": [
+            3,
+            2,
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -461,7 +481,18 @@ EOF
       "nspace": "",
       "name": "obj4",
       "snapset": {
-        "seq": 7,
+        "snap_context": {
+          "seq": 7,
+          "snaps": [
+            7,
+            6,
+            5,
+            4,
+            3,
+            2,
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 7,
@@ -497,7 +528,17 @@ EOF
       "nspace": "",
       "name": "obj5",
       "snapset": {
-        "seq": 6,
+        "snap_context": {
+          "seq": 6,
+          "snaps": [
+            6,
+            5,
+            4,
+            3,
+            2,
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -548,7 +589,12 @@ EOF
       "nspace": "",
       "name": "obj6",
       "snapset": {
-        "seq": 1,
+        "snap_context": {
+          "seq": 1,
+          "snaps": [
+            1
+          ]
+        },
         "clones": []
       }
     },
@@ -564,7 +610,10 @@ EOF
       "nspace": "",
       "name": "obj7",
       "snapset": {
-        "seq": 0,
+        "snap_context": {
+          "seq": 0,
+          "snaps": []
+        },
         "clones": []
       }
     },
@@ -577,7 +626,12 @@ EOF
       "nspace": "",
       "name": "obj8",
       "snapset": {
-        "seq": 0,
+        "snap_context": {
+          "seq": 0,
+          "snaps": [
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -596,7 +650,12 @@ EOF
       "locator": "",
       "snap": "head",
       "snapset": {
-        "seq": 1,
+        "snap_context": {
+          "seq": 1,
+          "snaps": [
+            1
+          ]
+        },
         "clones": [
           {
             "snap": 1,
@@ -615,7 +674,7 @@ EOF
 }
 EOF
 
-    jq "$jqfilter" $dir/json | python3 -c "$sortkeys" > $dir/csjson
+    jq "$jqfilter" $dir/json | python -c "$sortkeys" > $dir/csjson
     multidiff $dir/checkcsjson $dir/csjson || test $getjson = "yes" || return 1
     if test $getjson = "yes"
     then
@@ -752,10 +811,8 @@ function _scrub_snaps_multi() {
 
     for osd in $(seq 0 $(expr $OSDS - 1))
     do
-      activate_osd $dir $osd || return 1
+      run_osd $dir $osd || return 1
     done
-
-    wait_for_clean || return 1
 
     local pgid="${poolid}.0"
     if ! pg_scrub "$pgid" ; then
@@ -779,7 +836,7 @@ function _scrub_snaps_multi() {
     if [ $which = "replica" ];
     then
         scruberrors="20"
-        jq "$jqfilter" << EOF | python3 -c "$sortkeys" > $dir/checkcsjson
+        jq "$jqfilter" << EOF | python -c "$sortkeys" > $dir/checkcsjson
 {
     "epoch": 23,
     "inconsistents": []
@@ -788,7 +845,7 @@ EOF
 
 else
         scruberrors="30"
-        jq "$jqfilter" << EOF | python3 -c "$sortkeys" > $dir/checkcsjson
+        jq "$jqfilter" << EOF | python -c "$sortkeys" > $dir/checkcsjson
 {
     "epoch": 23,
     "inconsistents": [
@@ -862,7 +919,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 1,
+                "snap_context": {
+                    "seq": 1,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": [
                     {
                         "snap": 1,
@@ -882,7 +944,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 1,
+                "snap_context": {
+                    "seq": 1,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": []
             },
             "errors": [
@@ -898,7 +965,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 1,
+                "snap_context": {
+                    "seq": 1,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": [
                     {
                         "snap": 1,
@@ -918,7 +990,17 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 6,
+                "snap_context": {
+                    "seq": 6,
+                    "snaps": [
+                        6,
+                        5,
+                        4,
+                        3,
+                        2,
+                        1
+                    ]
+                },
                 "clones": [
                     {
                         "snap": 1,
@@ -969,7 +1051,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 1,
+                "snap_context": {
+                    "seq": 1,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": []
             },
             "errors": [
@@ -985,7 +1072,10 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 0,
+                "snap_context": {
+                    "seq": 0,
+                    "snaps": []
+                },
                 "clones": []
             },
             "errors": [
@@ -1001,7 +1091,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 0,
+                "snap_context": {
+                    "seq": 0,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": [
                     {
                         "snap": 1,
@@ -1023,7 +1118,12 @@ else
             "locator": "",
             "snap": "head",
             "snapset": {
-                "seq": 1,
+                "snap_context": {
+                    "seq": 1,
+                    "snaps": [
+                        1
+                    ]
+                },
                 "clones": [
                     {
                         "snap": 1,
@@ -1042,7 +1142,7 @@ else
 EOF
 fi
 
-    jq "$jqfilter" $dir/json | python3 -c "$sortkeys" > $dir/csjson
+    jq "$jqfilter" $dir/json | python -c "$sortkeys" > $dir/csjson
     multidiff $dir/checkcsjson $dir/csjson || test $getjson = "yes" || return 1
     if test $getjson = "yes"
     then

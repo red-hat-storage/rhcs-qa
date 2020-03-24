@@ -4,6 +4,7 @@ import logging
 from textwrap import dedent
 import datetime
 import gevent
+import datetime
 
 from teuthology.orchestra.run import CommandFailedError, Raw
 from tasks.cephfs.cephfs_test_case import CephFSTestCase, for_teuthology
@@ -44,10 +45,11 @@ class TestStrays(CephFSTestCase):
             size = {size}
             file_count = {file_count}
             os.mkdir(os.path.join(mount_path, subdir))
-            for i in range(0, file_count):
+            for i in xrange(0, file_count):
                 filename = "{{0}}_{{1}}.bin".format(i, size)
-                with open(os.path.join(mount_path, subdir, filename), 'w') as f:
-                    f.write(size * 'x')
+                f = open(os.path.join(mount_path, subdir, filename), 'w')
+                f.write(size * 'x')
+                f.close()
         """.format(
             mount_path=self.mount_a.mountpoint,
             size=1024,
@@ -112,7 +114,7 @@ class TestStrays(CephFSTestCase):
             self.set_conf('mds', 'mds_max_purge_files', "%d" % files)
             self.set_conf('mds', 'mds_max_purge_ops', "%d" % ops)
 
-            pgs = self.fs.mon_manager.get_pool_int_property(
+            pgs = self.fs.mon_manager.get_pool_property(
                 self.fs.get_data_pool_name(),
                 "pg_num"
             )
@@ -136,7 +138,7 @@ class TestStrays(CephFSTestCase):
             size_unit = 1024  # small, numerous files
             file_multiplier = 200
         else:
-            raise NotImplementedError(throttle_type)
+            raise NotImplemented(throttle_type)
 
         # Pick up config changes
         self.fs.mds_fail_restart()
@@ -150,11 +152,12 @@ class TestStrays(CephFSTestCase):
             size_unit = {size_unit}
             file_multiplier = {file_multiplier}
             os.mkdir(os.path.join(mount_path, subdir))
-            for i in range(0, file_multiplier):
-                for size in range(0, {size_range}*size_unit, size_unit):
+            for i in xrange(0, file_multiplier):
+                for size in xrange(0, {size_range}*size_unit, size_unit):
                     filename = "{{0}}_{{1}}.bin".format(i, size / size_unit)
-                    with open(os.path.join(mount_path, subdir, filename), 'w') as f:
-                        f.write(size * 'x')
+                    f = open(os.path.join(mount_path, subdir, filename), 'w')
+                    f.write(size * 'x')
+                    f.close()
         """.format(
             mount_path=self.mount_a.mountpoint,
             size_unit=size_unit,
@@ -194,10 +197,11 @@ class TestStrays(CephFSTestCase):
             num_strays = mdc_stats['num_strays']
             num_strays_purging = pq_stats['pq_executing']
             num_purge_ops = pq_stats['pq_executing_ops']
-            files_high_water = pq_stats['pq_executing_high_water']
-            ops_high_water = pq_stats['pq_executing_ops_high_water']
 
-            self.data_log.append([datetime.datetime.now(), num_strays, num_strays_purging, num_purge_ops, files_high_water, ops_high_water])
+            self.data_log.append([datetime.datetime.now(), num_strays, num_strays_purging, num_purge_ops])
+
+            files_high_water = max(files_high_water, num_strays_purging)
+            ops_high_water = max(ops_high_water, num_purge_ops)
 
             total_strays_created = mdc_stats['strays_created']
             total_strays_purged = pq_stats['pq_executed']
@@ -221,7 +225,7 @@ class TestStrays(CephFSTestCase):
                             num_strays_purging, mds_max_purge_files
                         ))
                 else:
-                    raise NotImplementedError(throttle_type)
+                    raise NotImplemented(throttle_type)
 
                 log.info("Waiting for purge to complete {0}/{1}, {2}/{3}".format(
                     num_strays_purging, num_strays,
@@ -241,18 +245,11 @@ class TestStrays(CephFSTestCase):
                 raise RuntimeError("Ops in flight high water is unexpectedly low ({0} / {1})".format(
                     ops_high_water, mds_max_purge_ops
                 ))
-            # The MDS may go over mds_max_purge_ops for some items, like a
-            # heavily fragmented directory.  The throttle does not kick in
-            # until *after* we reach or exceed the limit.  This is expected
-            # because we don't want to starve the PQ or never purge a
-            # particularly large file/directory.
-            self.assertLessEqual(ops_high_water, mds_max_purge_ops+64)
         elif throttle_type == self.FILES_THROTTLE:
             if files_high_water < mds_max_purge_files / 2:
                 raise RuntimeError("Files in flight high water is unexpectedly low ({0} / {1})".format(
-                    files_high_water, mds_max_purge_files
+                    ops_high_water, mds_max_purge_files
                 ))
-            self.assertLessEqual(files_high_water, mds_max_purge_files)
 
         # Sanity check all MDC stray stats
         stats = self.fs.mds_asok(['perf', 'dump'])
@@ -839,8 +836,7 @@ class TestStrays(CephFSTestCase):
                 path = os.path.join("{path}", "subdir")
                 os.mkdir(path)
                 for n in range(0, {file_count}):
-                    with open(os.path.join(path, "%s" % n), 'w') as f:
-                        f.write(str(n))
+                    open(os.path.join(path, "%s" % n), 'w').write("%s" % n)
                 """.format(
             path=self.mount_a.mountpoint,
             file_count=LOW_LIMIT+1
@@ -857,8 +853,7 @@ class TestStrays(CephFSTestCase):
             path = os.path.join("{path}", "subdir2")
             os.mkdir(path)
             for n in range(0, {file_count}):
-                with open(os.path.join(path, "%s" % n), 'w') as f:
-                    f.write(str(n))
+                open(os.path.join(path, "%s" % n), 'w').write("%s" % n)
             dfd = os.open(path, os.O_DIRECTORY)
             os.fsync(dfd)
             """.format(
@@ -881,8 +876,7 @@ class TestStrays(CephFSTestCase):
             import os
             path = os.path.join("{path}", "subdir2")
             for n in range({file_count}, ({file_count}*3)//2):
-                with open(os.path.join(path, "%s" % n), 'w') as f:
-                    f.write(str(n))
+                open(os.path.join(path, "%s" % n), 'w').write("%s" % n)
             """.format(
         path=self.mount_a.mountpoint,
         file_count=LOW_LIMIT
@@ -897,8 +891,9 @@ class TestStrays(CephFSTestCase):
                 os.mkdir(path)
                 for n in range({file_count}):
                     fpath = os.path.join(path, "%s" % n)
-                    with open(fpath, 'w') as f:
-                        f.write(str(n))
+                    f = open(fpath, 'w')
+                    f.write("%s" % n)
+                    f.close()
                     os.unlink(fpath)
                 """.format(
             path=self.mount_a.mountpoint,
@@ -921,8 +916,9 @@ class TestStrays(CephFSTestCase):
             os.mkdir(path)
             for n in range({file_count}):
                 fpath = os.path.join(path, "%s" % n)
-                with open(fpath, 'w') as f:
-                    f.write(str(n))
+                f = open(fpath, 'w')
+                f.write("%s" % n)
+                f.close()
                 os.unlink(fpath)
             """.format(
         path=self.mount_a.mountpoint,

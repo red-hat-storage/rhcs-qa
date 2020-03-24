@@ -10,6 +10,7 @@ source $(dirname $0)/../ceph-helpers-root.sh
 #			Install required tools
 ############################################
 echo "Install required tools"
+install git cmake
 
 CURRENT_PATH=`pwd`
 
@@ -20,31 +21,13 @@ CURRENT_PATH=`pwd`
 # for rocksdb
 case $(distro_id) in
 	ubuntu|debian|devuan)
-		install git g++ libsnappy-dev zlib1g-dev libbz2-dev libradospp-dev
-        case $(distro_version) in
-            *Xenial*)
-                install_cmake3_on_xenial
-                ;;
-            *)
-                install cmake
-                ;;
-        esac
+		install g++ libsnappy-dev zlib1g-dev libbz2-dev libradospp-dev
 		;;
 	centos|fedora|rhel)
-        case $(distro_id) in
-            centos)
-                # centos needs PowerTools repo for snappy-devel
-                test -x /usr/bin/dnf && sudo dnf config-manager --set-enabled PowerTools || true
-                ;;
-            rhel)
-                # RHEL needs CRB repo for snappy-devel
-                sudo subscription-manager repos --enable "codeready-builder-for-rhel-8-x86_64-rpms"
-                ;;
-        esac
-        install git gcc-c++.x86_64 snappy-devel zlib zlib-devel bzip2 bzip2-devel libradospp-devel.x86_64 cmake
-        ;;
+		install gcc-c++.x86_64 snappy-devel zlib zlib-devel bzip2 bzip2-devel libradospp-devel.x86_64
+		;;
 	opensuse*|suse|sles)
-		install git gcc-c++ snappy-devel zlib-devel libbz2-devel libradospp-devel
+		install gcc-c++ snappy-devel zlib-devel libbz2-devel libradospp-devel
 		;;
 	*)
         echo "$(distro_id) is unknown, $@ will have to be installed manually."
@@ -72,14 +55,7 @@ git clone https://github.com/facebook/rocksdb.git --depth 1
 
 # compile code
 cd rocksdb
-if type cmake3 > /dev/null 2>&1 ; then
-    CMAKE=cmake3
-else
-    CMAKE=cmake
-fi
-
-[ -z "$BUILD_DIR" ] && BUILD_DIR=build
-mkdir ${BUILD_DIR} && cd ${BUILD_DIR} && ${CMAKE} -DCMAKE_BUILD_TYPE=Debug -DWITH_TESTS=ON -DWITH_LIBRADOS=ON -DWITH_SNAPPY=ON -DWITH_GFLAGS=OFF -DFAIL_ON_WARNINGS=OFF ..
+mkdir build && cd build && cmake -DWITH_LIBRADOS=ON -DWITH_SNAPPY=ON -DWITH_GFLAGS=OFF -DFAIL_ON_WARNINGS=OFF ..
 make rocksdb_env_librados_test -j8
 
 echo "Copy ceph.conf"
