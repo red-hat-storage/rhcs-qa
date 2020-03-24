@@ -11,10 +11,8 @@ overrides:
       - \(CACHE_POOL_
       - \(SMALLER_PGP_NUM\)
       - \(OBJECT_
-      - \(SLOW_OPS\)
+      - \(REQUEST_SLOW\)
       - \(TOO_FEW_PGS\)
-      - \(OSD_SLOW_PING_TIME
-      - slow request
     conf:
       global:
         ms inject delay max: 1
@@ -22,7 +20,6 @@ overrides:
         ms inject delay type: mon
         ms inject internal delays: 0.002
         ms inject socket failures: 2500
-        mon client directed command retry: 5
 tasks:
 - install: null
 - ceph:

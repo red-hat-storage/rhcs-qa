@@ -1,7 +1,9 @@
+tasks:
+- install:
+- ceph:
+- mds_thrash:
+
 overrides:
   ceph:
     log-whitelist:
-      - Replacing daemon mds
-
-tasks:
-- mds_thrash:
+      - not responding, replacing

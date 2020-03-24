@@ -1,6 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash -x
 
-set -ex
+set -e
+set -x
 
 # detect data pool
 datapool=

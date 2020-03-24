@@ -1,6 +1,6 @@
 add_library(journal_test_mock STATIC mock/MockJournaler.cc)
-target_link_libraries(journal_test_mock
-  PUBLIC GMock::GMock)
+set_target_properties(journal_test_mock PROPERTIES COMPILE_FLAGS
+  ${UNITTEST_CXX_FLAGS})
 
 # unittest_journal
 set(unittest_journal_srcs
@@ -20,13 +20,13 @@ set(unittest_journal_srcs
 add_executable(unittest_journal
   ${unittest_journal_srcs} 
   )
-add_ceph_unittest(unittest_journal)
+add_ceph_unittest(unittest_journal ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/unittest_journal)
 target_link_libraries(unittest_journal 
   journal
   cls_journal
   cls_journal_client
   rados_test_stub
   librados
-  radostest-cxx
+  radostest
   global 
   )

@@ -46,10 +46,9 @@ int main(int argc, char **argv) {
   argv_to_vec(argc, (const char **)argv, args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
-  cct->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->apply_changes(NULL);
 
   std::cerr << "args: " << args << std::endl;
   if (args.size() < 4) {
@@ -65,25 +64,23 @@ int main(int argc, char **argv) {
   if (string(args[0]) == string("new")) start_new = true;
 
   KeyValueDB *_db = KeyValueDB::create(g_ceph_context, "leveldb", db_path);
-  ceph_assert(!_db->create_and_open(std::cerr));
+  assert(!_db->create_and_open(std::cerr));
   boost::scoped_ptr<KeyValueDB> db(_db);
   boost::scoped_ptr<ObjectStore> store(new FileStore(cct.get(), store_path,
 						     store_dev));
 
+  ObjectStore::Sequencer osr(__func__);
   coll_t coll(spg_t(pg_t(0,12),shard_id_t::NO_SHARD));
-  ObjectStore::CollectionHandle ch;
 
   if (start_new) {
     std::cerr << "mkfs" << std::endl;
-    ceph_assert(!store->mkfs());
+    assert(!store->mkfs());
     ObjectStore::Transaction t;
-    ceph_assert(!store->mount());
-    ch = store->create_new_collection(coll);
+    assert(!store->mount());
     t.create_collection(coll, 0);
-    store->queue_transaction(ch, std::move(t));
+    store->apply_transaction(&osr, std::move(t));
   } else {
-    ceph_assert(!store->mount());
-    ch = store->open_collection(coll);
+    assert(!store->mount());
   }
 
   FileStoreTracker tracker(store.get(), db.get());

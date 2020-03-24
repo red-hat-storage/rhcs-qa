@@ -48,6 +48,10 @@ ACTION_P(GetReference, ref_object) {
   ref_object->get();
 }
 
+ACTION_P(Notify, ctx) {
+  ctx->complete(0);
+}
+
 MATCHER_P(ContentsEqual, bl, "") {
   // TODO fix const-correctness of bufferlist
   return const_cast<bufferlist &>(arg).contents_equal(

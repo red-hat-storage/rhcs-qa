@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -f
+#!/bin/bash -f
 
 #
 # Generate a libvirt secret on the Openstack node. 

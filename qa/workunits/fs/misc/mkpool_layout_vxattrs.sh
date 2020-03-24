@@ -1,15 +1,15 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -e
 
 touch foo.$$
-ceph osd pool create foo.$$ 8
-ceph fs add_data_pool cephfs foo.$$
+rados mkpool foo.$$
+ceph mds add_data_pool foo.$$
 setfattr -n ceph.file.layout.pool -v foo.$$ foo.$$
 
 # cleanup
 rm foo.$$
-ceph fs rm_data_pool cephfs foo.$$
-ceph osd pool rm foo.$$ foo.$$ --yes-i-really-really-mean-it
+ceph mds remove_data_pool foo.$$
+rados rmpool foo.$$ foo.$$ --yes-i-really-really-mean-it
 
 echo OK

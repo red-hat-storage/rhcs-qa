@@ -1,12 +1,9 @@
 # Amazon/S3.pm (cpan) not available as an rpm
-os_type: ubuntu
 tasks:
+- exec:
+    client.0:
+      - cpan install Amazon::S3
 - workunit:
     clients:
       client.0:
         - rgw/s3_bucket_quota.pl
-overrides:
-  ceph:
-    conf:
-      client:
-        rgw relaxed s3 bucket names: true

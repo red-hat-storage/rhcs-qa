@@ -3,12 +3,14 @@ meta:
    Use debug level 0/0 for performance tests.
 
 overrides:
-  ceph:
-    conf:
+  ceph_ansible:
+   vars:
+    ceph_conf_overrides:
       mon:
         debug mon: "0/0"
         debug ms: "0/0"
         debug paxos: "0/0"
+        mon allow pool delete: true
       osd:
         debug filestore: "0/0"
         debug journal: "0/0"
@@ -63,6 +65,7 @@ overrides:
         debug asok: "0/0"
         debug throttle: "0/0"
         debug refs: "0/0"
+        debug xio: "0/0"
         debug compressor: "0/0"
         debug bluestore: "0/0"
         debug bluefs: "0/0"
@@ -71,6 +74,7 @@ overrides:
         debug rocksdb: "0/0"
         debug leveldb: "0/0"
         debug memdb: "0/0"
+        debug kinetic: "0/0"
         debug fuse: "0/0"
         debug mgr: "0/0"
         debug mgrc: "0/0"

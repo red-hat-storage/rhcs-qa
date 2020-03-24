@@ -22,9 +22,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
-#ifdef __linux__
 #include <sys/xattr.h>
-#endif
 #include <signal.h>
 
 TEST(Caps, ReadZero) {

@@ -11,123 +11,6 @@ from tasks.cephfs.cephfs_test_case import CephFSTestCase
 
 log = logging.getLogger(__name__)
 
-class TestScrubControls(CephFSTestCase):
-    """
-    Test basic scrub control operations such as abort, pause and resume.
-    """
-
-    MDSS_REQUIRED = 1
-    CLIENTS_REQUIRED = 1
-
-    def _abort_scrub(self, expected):
-        res = self.fs.rank_tell(["scrub", "abort"])
-        self.assertEqual(res['return_code'], expected)
-    def _pause_scrub(self, expected):
-        res = self.fs.rank_tell(["scrub", "pause"])
-        self.assertEqual(res['return_code'], expected)
-    def _resume_scrub(self, expected):
-        res = self.fs.rank_tell(["scrub", "resume"])
-        self.assertEqual(res['return_code'], expected)
-    def _get_scrub_status(self):
-        return self.fs.rank_tell(["scrub", "status"])
-    def _check_task_status(self, expected_status):
-        task_status = self.fs.get_task_status("scrub status")
-        active = self.fs.get_active_names()
-        log.debug("current active={0}".format(active))
-        self.assertTrue(task_status[active[0]].startswith(expected_status))
-
-    def test_scrub_abort(self):
-        test_dir = "scrub_control_test_path"
-        abs_test_path = "/{0}".format(test_dir)
-
-        log.info("mountpoint: {0}".format(self.mount_a.mountpoint))
-        client_path = os.path.join(self.mount_a.mountpoint, test_dir)
-        log.info("client_path: {0}".format(client_path))
-
-        log.info("Cloning repo into place")
-        TestScrubChecks.clone_repo(self.mount_a, client_path)
-
-        out_json = self.fs.rank_tell(["scrub", "start", abs_test_path, "recursive"])
-        self.assertNotEqual(out_json, None)
-
-        # abort and verify
-        self._abort_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertTrue("no active" in out_json['status'])
-
-        # sleep enough to fetch updated task status
-        time.sleep(10)
-        self._check_task_status("idle")
-
-    def test_scrub_pause_and_resume(self):
-        test_dir = "scrub_control_test_path"
-        abs_test_path = "/{0}".format(test_dir)
-
-        log.info("mountpoint: {0}".format(self.mount_a.mountpoint))
-        client_path = os.path.join(self.mount_a.mountpoint, test_dir)
-        log.info("client_path: {0}".format(client_path))
-
-        log.info("Cloning repo into place")
-        _ = TestScrubChecks.clone_repo(self.mount_a, client_path)
-
-        out_json = self.fs.rank_tell(["scrub", "start", abs_test_path, "recursive"])
-        self.assertNotEqual(out_json, None)
-
-        # pause and verify
-        self._pause_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertTrue("PAUSED" in out_json['status'])
-
-        # sleep enough to fetch updated task status
-        time.sleep(10)
-        self._check_task_status("paused")
-
-        # resume and verify
-        self._resume_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertFalse("PAUSED" in out_json['status'])
-
-    def test_scrub_pause_and_resume_with_abort(self):
-        test_dir = "scrub_control_test_path"
-        abs_test_path = "/{0}".format(test_dir)
-
-        log.info("mountpoint: {0}".format(self.mount_a.mountpoint))
-        client_path = os.path.join(self.mount_a.mountpoint, test_dir)
-        log.info("client_path: {0}".format(client_path))
-
-        log.info("Cloning repo into place")
-        _ = TestScrubChecks.clone_repo(self.mount_a, client_path)
-
-        out_json = self.fs.rank_tell(["scrub", "start", abs_test_path, "recursive"])
-        self.assertNotEqual(out_json, None)
-
-        # pause and verify
-        self._pause_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertTrue("PAUSED" in out_json['status'])
-
-        # sleep enough to fetch updated task status
-        time.sleep(10)
-        self._check_task_status("paused")
-
-        # abort and verify
-        self._abort_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertTrue("PAUSED" in out_json['status'])
-        self.assertTrue("0 inodes" in out_json['status'])
-
-        # sleep enough to fetch updated task status
-        time.sleep(10)
-        self._check_task_status("paused")
-
-        # resume and verify
-        self._resume_scrub(0)
-        out_json = self._get_scrub_status()
-        self.assertTrue("no active" in out_json['status'])
-
-        # sleep enough to fetch updated task status
-        time.sleep(10)
-        self._check_task_status("idle")
 
 class TestScrubChecks(CephFSTestCase):
     """
@@ -167,11 +50,12 @@ class TestScrubChecks(CephFSTestCase):
         log.info("client_path: {0}".format(client_path))
 
         log.info("Cloning repo into place")
-        repo_path = TestScrubChecks.clone_repo(self.mount_a, client_path)
+        repo_path = self.clone_repo(self.mount_a, client_path)
 
-        log.info("Initiating mds_scrub_checks on mds.{id_} test_path {path}, run_seq {seq}".format(
-            id_=mds_rank, path=abs_test_path, seq=run_seq)
-        )
+        log.info("Initiating mds_scrub_checks on mds.{id_}, " +
+                 "test_path {path}, run_seq {seq}".format(
+                     id_=mds_rank, path=abs_test_path, seq=run_seq)
+                 )
 
 
         success_validator = lambda j, r: self.json_validator(j, r, "return_code", 0)
@@ -179,7 +63,7 @@ class TestScrubChecks(CephFSTestCase):
         nep = "{test_path}/i/dont/exist".format(test_path=abs_test_path)
         self.asok_command(mds_rank, "flush_path {nep}".format(nep=nep),
                           lambda j, r: self.json_validator(j, r, "return_code", -errno.ENOENT))
-        self.tell_command(mds_rank, "scrub start {nep}".format(nep=nep),
+        self.asok_command(mds_rank, "scrub_path {nep}".format(nep=nep),
                           lambda j, r: self.json_validator(j, r, "return_code", -errno.ENOENT))
 
         test_repo_path = "{test_path}/ceph-qa-suite".format(test_path=abs_test_path)
@@ -189,8 +73,8 @@ class TestScrubChecks(CephFSTestCase):
             log.info("First run: flushing {dirpath}".format(dirpath=dirpath))
             command = "flush_path {dirpath}".format(dirpath=dirpath)
             self.asok_command(mds_rank, command, success_validator)
-        command = "scrub start {dirpath}".format(dirpath=dirpath)
-        self.tell_command(mds_rank, command, success_validator)
+        command = "scrub_path {dirpath}".format(dirpath=dirpath)
+        self.asok_command(mds_rank, command, success_validator)
 
         filepath = "{repo_path}/suites/fs/verify/validater/valgrind.yaml".format(
             repo_path=test_repo_path)
@@ -198,13 +82,13 @@ class TestScrubChecks(CephFSTestCase):
             log.info("First run: flushing {filepath}".format(filepath=filepath))
             command = "flush_path {filepath}".format(filepath=filepath)
             self.asok_command(mds_rank, command, success_validator)
-        command = "scrub start {filepath}".format(filepath=filepath)
-        self.tell_command(mds_rank, command, success_validator)
+        command = "scrub_path {filepath}".format(filepath=filepath)
+        self.asok_command(mds_rank, command, success_validator)
 
         filepath = "{repo_path}/suites/fs/basic/clusters/fixed-3-cephfs.yaml". \
             format(repo_path=test_repo_path)
-        command = "scrub start {filepath}".format(filepath=filepath)
-        self.tell_command(mds_rank, command,
+        command = "scrub_path {filepath}".format(filepath=filepath)
+        self.asok_command(mds_rank, command,
                           lambda j, r: self.json_validator(j, r, "performed_validation",
                                                            False))
 
@@ -212,8 +96,8 @@ class TestScrubChecks(CephFSTestCase):
             log.info("First run: flushing base dir /")
             command = "flush_path /"
             self.asok_command(mds_rank, command, success_validator)
-        command = "scrub start /"
-        self.tell_command(mds_rank, command, success_validator)
+        command = "scrub_path /"
+        self.asok_command(mds_rank, command, success_validator)
 
         new_dir = "{repo_path}/new_dir_{i}".format(repo_path=repo_path, i=run_seq)
         test_new_dir = "{repo_path}/new_dir_{i}".format(repo_path=test_repo_path,
@@ -234,16 +118,16 @@ class TestScrubChecks(CephFSTestCase):
         # check that scrub fails on errors
         ino = self.mount_a.path_to_ino(new_file)
         rados_obj_name = "{ino:x}.00000000".format(ino=ino)
-        command = "scrub start {file}".format(file=test_new_file)
+        command = "scrub_path {file}".format(file=test_new_file)
 
         # Missing parent xattr -> ENODATA
         self.fs.rados(["rmxattr", rados_obj_name, "parent"], pool=self.fs.get_data_pool_name())
-        self.tell_command(mds_rank, command,
+        self.asok_command(mds_rank, command,
                           lambda j, r: self.json_validator(j, r, "return_code", -errno.ENODATA))
 
         # Missing object -> ENOENT
         self.fs.rados(["rm", rados_obj_name], pool=self.fs.get_data_pool_name())
-        self.tell_command(mds_rank, command,
+        self.asok_command(mds_rank, command,
                           lambda j, r: self.json_validator(j, r, "return_code", -errno.ENOENT))
 
         command = "flush_path /"
@@ -278,14 +162,14 @@ class TestScrubChecks(CephFSTestCase):
             self.mount_a.run_shell(["sudo", "rmdir", test_dir])
         self.assertEqual(ar.exception.exitstatus, 1)
 
-        self.tell_command(mds_rank, "scrub start /{0} repair".format(test_dir),
+        self.asok_command(mds_rank, "scrub_path /{0} repair".format(test_dir),
                           lambda j, r: self.json_validator(j, r, "return_code", 0))
 
-        # wait a few second for background repair
-        time.sleep(10)
+	# wait a few second for background repair
+	time.sleep(10)
 
-        # fragstat should be fixed
-        self.mount_a.run_shell(["sudo", "rmdir", test_dir])
+	# fragstat should be fixed
+	self.mount_a.run_shell(["sudo", "rmdir", test_dir])
 
     @staticmethod
     def json_validator(json_out, rc, element, expected_value):
@@ -296,20 +180,6 @@ class TestScrubChecks(CephFSTestCase):
             return False, "unexpectedly got {jv} instead of {ev}!".format(
                 jv=element_value, ev=expected_value)
         return True, "Succeeded"
-
-    def tell_command(self, mds_rank, command, validator):
-        log.info("Running command '{command}'".format(command=command))
-
-        command_list = command.split()
-        jout = self.fs.rank_tell(command_list, mds_rank)
-
-        log.info("command '{command}' returned '{jout}'".format(
-                     command=command, jout=jout))
-
-        success, errstring = validator(jout, 0)
-        if not success:
-            raise AsokCommandFailedError(command, 0, jout, errstring)
-        return jout
 
     def asok_command(self, mds_rank, command, validator):
         log.info("Running command '{command}'".format(command=command))
@@ -328,8 +198,9 @@ class TestScrubChecks(CephFSTestCase):
         else:
             jout = None
 
-        log.info("command '{command}' got response code '{rout}' and stdout '{sout}'".format(
-            command=command, rout=rout, sout=sout))
+        log.info("command '{command}' got response code " +
+                 "'{rout}' and stdout '{sout}'".format(
+                     command=command, rout=rout, sout=sout))
 
         success, errstring = validator(jout, rout)
 
@@ -338,8 +209,7 @@ class TestScrubChecks(CephFSTestCase):
 
         return jout
 
-    @staticmethod
-    def clone_repo(client_mount, path):
+    def clone_repo(self, client_mount, path):
         repo = "ceph-qa-suite"
         repo_path = os.path.join(path, repo)
         client_mount.run_shell(["mkdir", "-p", path])
@@ -369,5 +239,7 @@ class AsokCommandFailedError(Exception):
         self.errstring = errstring
 
     def __str__(self):
-        return "Admin socket: {command} failed with rc={rc} json output={json}, because '{es}'".format(
-            command=self.command, rc=self.rc, json=self.json, es=self.errstring)
+        return "Admin socket: {command} failed with rc={rc}," + \
+               "json output={json}, because '{es}'".format(
+                   command=self.command, rc=self.rc,
+                   json=self.json, es=self.errstring)

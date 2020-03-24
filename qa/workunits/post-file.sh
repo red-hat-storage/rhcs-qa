@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -ex
+#!/bin/bash -ex
 
 what="$1"
 [ -z "$what" ] && what=/etc/udev/rules.d

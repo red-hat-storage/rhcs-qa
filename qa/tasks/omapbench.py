@@ -4,8 +4,6 @@ Run omapbench executable within teuthology
 import contextlib
 import logging
 
-import six
-
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 
@@ -50,11 +48,11 @@ def task(ctx, config):
     testdir = teuthology.get_testdir(ctx)
     print(str(config.get('increment',-1)))
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, six.string_types)
+        assert isinstance(role, basestring)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
         proc = remote.run(
             args=[
                 "/bin/sh", "-c",
@@ -82,4 +80,4 @@ def task(ctx, config):
         yield
     finally:
         log.info('joining omapbench')
-        run.wait(omapbench.values())
+        run.wait(omapbench.itervalues())

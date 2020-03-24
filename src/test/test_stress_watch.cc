@@ -3,7 +3,7 @@
 #include "include/utime.h"
 #include "common/Thread.h"
 #include "common/Clock.h"
-#include "test/librados/test_cxx.h"
+#include "test/librados/test.h"
 
 #include "gtest/gtest.h"
 #include <semaphore.h>
@@ -14,7 +14,7 @@
 #include <string>
 #include <atomic>
 
-#include "test/librados/testcase_cxx.h"
+#include "test/librados/TestCase.h"
 
 
 using namespace librados;
@@ -62,7 +62,7 @@ struct WatcherUnwatcher : public Thread {
 
 typedef RadosTestParamPP WatchStress;
 
-INSTANTIATE_TEST_SUITE_P(WatchStressTests, WatchStress,
+INSTANTIATE_TEST_CASE_P(WatchStressTests, WatchStress,
 			::testing::Values("", "cache"));
 
 TEST_P(WatchStress, Stress1) {

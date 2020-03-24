@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -ex
 #
 # Copyright (C) 2014, 2015 Red Hat <contact@redhat.com>
 # Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
@@ -15,7 +15,6 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
-set -ex
 source $(dirname $0)/detect-build-env-vars.sh
 
 test `uname` = FreeBSD

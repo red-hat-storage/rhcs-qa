@@ -1,8 +1,6 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
-#include "cls/journal/cls_journal_client.h"
-#include "cls/rbd/cls_rbd_client.h"
 #include "cls/rbd/cls_rbd_types.h"
 #include "test/librbd/test_fixture.h"
 #include "test/librbd/test_support.h"
@@ -14,15 +12,10 @@
 #include "librbd/ObjectMap.h"
 #include "librbd/Operations.h"
 #include "librbd/api/DiffIterate.h"
-#include "librbd/api/Image.h"
-#include "librbd/api/Migration.h"
-#include "librbd/api/PoolMetadata.h"
-#include "librbd/api/Snapshot.h"
 #include "librbd/io/AioCompletion.h"
 #include "librbd/io/ImageRequest.h"
 #include "librbd/io/ImageRequestWQ.h"
 #include "osdc/Striper.h"
-#include "common/Cond.h"
 #include <boost/scope_exit.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/assign/list_of.hpp>
@@ -134,38 +127,6 @@ void generate_random_iomap(librbd::Image &image, int num_objects, int object_siz
   }
 }
 
-static bool is_sparsify_supported(librados::IoCtx &ioctx,
-                                  const std::string &oid) {
-  EXPECT_EQ(0, ioctx.create(oid, true));
-  int r = librbd::cls_client::sparsify(&ioctx, oid, 16, true);
-  EXPECT_TRUE(r == 0 || r == -EOPNOTSUPP);
-  ioctx.remove(oid);
-
-  return (r == 0);
-}
-
-static bool is_sparse_read_supported(librados::IoCtx &ioctx,
-                                     const std::string &oid) {
-  EXPECT_EQ(0, ioctx.create(oid, true));
-  bufferlist inbl;
-  inbl.append(std::string(1, 'X'));
-  EXPECT_EQ(0, ioctx.write(oid, inbl, inbl.length(), 1));
-  EXPECT_EQ(0, ioctx.write(oid, inbl, inbl.length(), 3));
-
-  std::map<uint64_t, uint64_t> m;
-  bufferlist outbl;
-  int r = ioctx.sparse_read(oid, m, outbl, 4, 0);
-  ioctx.remove(oid);
-
-  int expected_r = 2;
-  std::map<uint64_t, uint64_t> expected_m = {{1, 1}, {3, 1}};
-  bufferlist expected_outbl;
-  expected_outbl.append(std::string(2, 'X'));
-
-  return (r == expected_r && m == expected_m &&
-          outbl.contents_equal(expected_outbl));
-}
-
 TEST_F(TestInternal, OpenByID) {
    REQUIRE_FORMAT_V2();
 
@@ -175,17 +136,9 @@ TEST_F(TestInternal, OpenByID) {
    close_image(ictx);
 
    ictx = new librbd::ImageCtx("", id, nullptr, m_ioctx, true);
-   ASSERT_EQ(0, ictx->state->open(0));
+   ASSERT_EQ(0, ictx->state->open(false));
    ASSERT_EQ(ictx->name, m_image_name);
    close_image(ictx);
-}
-
-TEST_F(TestInternal, OpenSnapDNE) {
-   librbd::ImageCtx *ictx;
-   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-   ictx = new librbd::ImageCtx(m_image_name, "", "unknown_snap", m_ioctx, true);
-   ASSERT_EQ(-ENOENT, ictx->state->open(librbd::OPEN_FLAG_SKIP_OPEN_PARENT));
 }
 
 TEST_F(TestInternal, IsExclusiveLockOwner) {
@@ -200,7 +153,7 @@ TEST_F(TestInternal, IsExclusiveLockOwner) {
 
   C_SaferCond ctx;
   {
-    std::unique_lock l{ictx->owner_lock};
+    RWLock::WLocker l(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&ctx);
   }
   ASSERT_EQ(0, ctx.wait());
@@ -303,8 +256,7 @@ TEST_F(TestInternal, SnapSetReleasesLock) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(
-                 ictx, cls::rbd::UserSnapshotNamespace(), "snap1"));
+  ASSERT_EQ(0, librbd::snap_set(ictx, cls::rbd::UserSnapshotNamespace(), "snap1"));
 
   bool is_owner;
   ASSERT_EQ(0, librbd::is_exclusive_lock_owner(ictx, &is_owner));
@@ -362,7 +314,7 @@ TEST_F(TestInternal, FlattenFailsToLockImage) {
       parent->unlock_image();
     }
     librbd::NoOpProgressContext no_op;
-    ASSERT_EQ(0, librbd::api::Image<>::remove(m_ioctx, clone_name, no_op));
+    ASSERT_EQ(0, librbd::remove(m_ioctx, clone_name, "", no_op));
   } BOOST_SCOPE_EXIT_END;
 
   ASSERT_EQ(0, open_image(clone_name, &ictx2));
@@ -428,13 +380,13 @@ TEST_F(TestInternal, CancelAsyncResize) {
 
   C_SaferCond ctx;
   {
-    std::unique_lock l{ictx->owner_lock};
+    RWLock::WLocker l(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&ctx);
   }
 
   ASSERT_EQ(0, ctx.wait());
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
     ASSERT_TRUE(ictx->exclusive_lock->is_lock_owner());
   }
 
@@ -446,9 +398,9 @@ TEST_F(TestInternal, CancelAsyncResize) {
     C_SaferCond ctx;
     librbd::NoOpProgressContext prog_ctx;
 
-    size -= std::min<uint64_t>(size, 1 << 18);
+    size -= MIN(size, 1<<18);
     {
-      std::shared_lock l{ictx->owner_lock};
+      RWLock::RLocker l(ictx->owner_lock);
       ictx->operations->execute_resize(size, true, prog_ctx, &ctx, 0);
     }
 
@@ -471,11 +423,11 @@ TEST_F(TestInternal, MultipleResize) {
   if (ictx->exclusive_lock != nullptr) {
     C_SaferCond ctx;
     {
-      std::unique_lock l{ictx->owner_lock};
+      RWLock::WLocker l(ictx->owner_lock);
       ictx->exclusive_lock->try_acquire_lock(&ctx);
     }
 
-    std::shared_lock owner_locker{ictx->owner_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
     ASSERT_EQ(0, ctx.wait());
     ASSERT_TRUE(ictx->exclusive_lock->is_lock_owner());
   }
@@ -491,11 +443,11 @@ TEST_F(TestInternal, MultipleResize) {
   while (size > 0) {
     uint64_t new_size = original_size;
     if (attempts++ % 2 == 0) {
-      size -= std::min<uint64_t>(size, 1 << 18);
+      size -= MIN(size, 1<<18);
       new_size = size;
     }
 
-    std::shared_lock l{ictx->owner_lock};
+    RWLock::RLocker l(ictx->owner_lock);
     contexts.push_back(new C_SaferCond());
     ictx->operations->execute_resize(new_size, true, prog_ctx, contexts.back(), 0);
   }
@@ -551,24 +503,49 @@ TEST_F(TestInternal, Metadata) {
   ASSERT_STREQ(val.c_str(), "value3");
 }
 
-TEST_F(TestInternal, MetadataConfApply) {
+TEST_F(TestInternal, MetadataFilter) {
   REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
 
+  map<string, bool> test_confs = boost::assign::map_list_of(
+    "aaaaaaa", false)(
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", false)(
+    "cccccccccccccc", false);
+  map<string, bool>::iterator it = test_confs.begin();
+  const string prefix = "test_config_";
+  bool is_continue;
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
-  ASSERT_EQ(-ENOENT, ictx->operations->metadata_remove("conf_rbd_cache"));
+  librbd::Image image1;
+  map<string, bufferlist> pairs, res;
+  pairs["abc"].append("value");
+  pairs["abcabc"].append("value");
+  pairs[prefix+it->first].append("value1");
+  ++it;
+  pairs[prefix+it->first].append("value2");
+  ++it;
+  pairs[prefix+it->first].append("value3");
+  pairs[prefix+"asdfsdaf"].append("value6");
+  pairs[prefix+"zxvzxcv123"].append("value5");
 
-  bool cache = ictx->cache;
-  std::string rbd_conf_cache = cache ? "true" : "false";
-  std::string new_rbd_conf_cache = !cache ? "true" : "false";
+  is_continue = ictx->_filter_metadata_confs(prefix, test_confs, pairs, &res);
+  ASSERT_TRUE(is_continue);
+  ASSERT_TRUE(res.size() == 3U);
+  it = test_confs.begin();
+  ASSERT_TRUE(res.count(it->first));
+  ASSERT_TRUE(it->second);
+  ++it;
+  ASSERT_TRUE(res.count(it->first));
+  ASSERT_TRUE(it->second);
+  ++it;
+  ASSERT_TRUE(res.count(it->first));
+  ASSERT_TRUE(it->second);
+  res.clear();
 
-  ASSERT_EQ(0, ictx->operations->metadata_set("conf_rbd_cache",
-                                              new_rbd_conf_cache));
-  ASSERT_EQ(!cache, ictx->cache);
-
-  ASSERT_EQ(0, ictx->operations->metadata_remove("conf_rbd_cache"));
-  ASSERT_EQ(cache, ictx->cache);
+  pairs["zzzzzzzz"].append("value7");
+  is_continue = ictx->_filter_metadata_confs(prefix, test_confs, pairs, &res);
+  ASSERT_FALSE(is_continue);
+  ASSERT_TRUE(res.size() == 3U);
 }
 
 TEST_F(TestInternal, SnapshotCopyup)
@@ -578,14 +555,9 @@ TEST_F(TestInternal, SnapshotCopyup)
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
-  bool sparse_read_supported = is_sparse_read_supported(
-      ictx->data_ctx, ictx->get_object_name(10));
-
   bufferlist bl;
   bl.append(std::string(256, '1'));
   ASSERT_EQ(256, ictx->io_work_queue->write(0, bl.length(), bufferlist{bl}, 0));
-  ASSERT_EQ(256, ictx->io_work_queue->write(1024, bl.length(), bufferlist{bl},
-                                            0));
 
   ASSERT_EQ(0, snap_create(*ictx, "snap1"));
   ASSERT_EQ(0,
@@ -616,11 +588,10 @@ TEST_F(TestInternal, SnapshotCopyup)
   librados::snap_set_t snap_set;
   ASSERT_EQ(0, snap_ctx.list_snaps(ictx2->get_object_name(0), &snap_set));
 
-  uint64_t copyup_end = ictx2->enable_sparse_copyup ? 1024 + 256 : 1 << order;
   std::vector< std::pair<uint64_t,uint64_t> > expected_overlap =
     boost::assign::list_of(
       std::make_pair(0, 256))(
-      std::make_pair(512, copyup_end - 512));
+      std::make_pair(512, 2096640));
   ASSERT_EQ(2U, snap_set.clones.size());
   ASSERT_NE(CEPH_NOSNAP, snap_set.clones[0].cloneid);
   ASSERT_EQ(2U, snap_set.clones[0].snaps.size());
@@ -636,17 +607,12 @@ TEST_F(TestInternal, SnapshotCopyup)
   for (std::list<std::string>::iterator it = snaps.begin();
        it != snaps.end(); ++it) {
     const char *snap_name = it->empty() ? NULL : it->c_str();
-    ASSERT_EQ(0, librbd::api::Image<>::snap_set(
-                   ictx2, cls::rbd::UserSnapshotNamespace(), snap_name));
+    ASSERT_EQ(0, librbd::snap_set(ictx2,
+				  cls::rbd::UserSnapshotNamespace(),
+				  snap_name));
 
     ASSERT_EQ(256,
               ictx2->io_work_queue->read(0, 256,
-                                         librbd::io::ReadResult{read_result},
-                                         0));
-    ASSERT_TRUE(bl.contents_equal(read_bl));
-
-    ASSERT_EQ(256,
-              ictx2->io_work_queue->read(1024, 256,
                                          librbd::io::ReadResult{read_result},
                                          0));
     ASSERT_TRUE(bl.contents_equal(read_bl));
@@ -659,51 +625,6 @@ TEST_F(TestInternal, SnapshotCopyup)
       ASSERT_TRUE(bl.contents_equal(read_bl));
     } else {
       ASSERT_TRUE(read_bl.is_zero());
-    }
-
-    // verify sparseness was preserved
-    {
-      librados::IoCtx io_ctx;
-      io_ctx.dup(m_ioctx);
-      librados::Rados rados(io_ctx);
-      EXPECT_EQ(0, rados.conf_set("rbd_cache", "false"));
-      EXPECT_EQ(0, rados.conf_set("rbd_sparse_read_threshold_bytes", "256"));
-      auto ictx3 = new librbd::ImageCtx(clone_name, "", snap_name, io_ctx,
-                                        true);
-      ASSERT_EQ(0, ictx3->state->open(0));
-      BOOST_SCOPE_EXIT(ictx3) {
-        ictx3->state->close();
-      } BOOST_SCOPE_EXIT_END;
-      std::map<uint64_t, uint64_t> expected_m;
-      bufferlist expected_bl;
-      if (ictx3->enable_sparse_copyup && sparse_read_supported) {
-        if (snap_name == NULL) {
-          expected_m = {{0, 512}, {1024, 256}};
-          expected_bl.append(std::string(256 * 3, '1'));
-        } else {
-          expected_m = {{0, 256}, {1024, 256}};
-          expected_bl.append(std::string(256 * 2, '1'));
-        }
-      } else {
-        expected_m = {{0, 1024 + 256}};
-        if (snap_name == NULL) {
-          expected_bl.append(std::string(256 * 2, '1'));
-          expected_bl.append(std::string(256 * 2, '\0'));
-          expected_bl.append(std::string(256 * 1, '1'));
-        } else {
-          expected_bl.append(std::string(256 * 1, '1'));
-          expected_bl.append(std::string(256 * 3, '\0'));
-          expected_bl.append(std::string(256 * 1, '1'));
-        }
-      }
-      std::map<uint64_t, uint64_t> read_m;
-      librbd::io::ReadResult sparse_read_result{&read_m, &read_bl};
-      EXPECT_EQ(1024 + 256,
-                ictx3->io_work_queue->read(0, 1024 + 256,
-                                           librbd::io::ReadResult{sparse_read_result},
-                                           0));
-      EXPECT_EQ(expected_m, read_m);
-      EXPECT_TRUE(expected_bl.contents_equal(read_bl));
     }
 
     // verify the object map was properly updated
@@ -714,191 +635,13 @@ TEST_F(TestInternal, SnapshotCopyup)
         state = OBJECT_EXISTS_CLEAN;
       }
 
-      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
+      librbd::ObjectMap<> object_map(*ictx2, ictx2->snap_id);
       C_SaferCond ctx;
-      object_map->open(&ctx);
+      object_map.open(&ctx);
       ASSERT_EQ(0, ctx.wait());
 
-      std::shared_lock image_locker{ictx2->image_lock};
-      ASSERT_EQ(state, (*object_map)[0]);
-      object_map->put();
-    }
-  }
-}
-
-TEST_F(TestInternal, SnapshotCopyupZeros)
-{
-  REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
-
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  // create an empty clone
-  ASSERT_EQ(0, snap_create(*ictx, "snap1"));
-  ASSERT_EQ(0,
-	    ictx->operations->snap_protect(cls::rbd::UserSnapshotNamespace(),
-					   "snap1"));
-
-  uint64_t features;
-  ASSERT_EQ(0, librbd::get_features(ictx, &features));
-
-  std::string clone_name = get_temp_image_name();
-  int order = ictx->order;
-  ASSERT_EQ(0, librbd::clone(m_ioctx, m_image_name.c_str(), "snap1", m_ioctx,
-			     clone_name.c_str(), features, &order, 0, 0));
-
-  librbd::ImageCtx *ictx2;
-  ASSERT_EQ(0, open_image(clone_name, &ictx2));
-
-  ASSERT_EQ(0, snap_create(*ictx2, "snap1"));
-
-  bufferlist bl;
-  bl.append(std::string(256, '1'));
-  ASSERT_EQ(256, ictx2->io_work_queue->write(256, bl.length(), bufferlist{bl},
-                                             0));
-
-  librados::IoCtx snap_ctx;
-  snap_ctx.dup(ictx2->data_ctx);
-  snap_ctx.snap_set_read(CEPH_SNAPDIR);
-
-  librados::snap_set_t snap_set;
-  ASSERT_EQ(0, snap_ctx.list_snaps(ictx2->get_object_name(0), &snap_set));
-
-  // verify that snapshot wasn't affected
-  ASSERT_EQ(1U, snap_set.clones.size());
-  ASSERT_EQ(CEPH_NOSNAP, snap_set.clones[0].cloneid);
-
-  bufferptr read_ptr(256);
-  bufferlist read_bl;
-  read_bl.push_back(read_ptr);
-
-  std::list<std::string> snaps = {"snap1", ""};
-  librbd::io::ReadResult read_result{&read_bl};
-  for (std::list<std::string>::iterator it = snaps.begin();
-       it != snaps.end(); ++it) {
-    const char *snap_name = it->empty() ? NULL : it->c_str();
-    ASSERT_EQ(0, librbd::api::Image<>::snap_set(
-                   ictx2, cls::rbd::UserSnapshotNamespace(), snap_name));
-
-    ASSERT_EQ(256,
-              ictx2->io_work_queue->read(0, 256,
-                                         librbd::io::ReadResult{read_result},
-                                         0));
-    ASSERT_TRUE(read_bl.is_zero());
-
-    ASSERT_EQ(256,
-              ictx2->io_work_queue->read(256, 256,
-                                         librbd::io::ReadResult{read_result},
-                                         0));
-    if (snap_name == NULL) {
-      ASSERT_TRUE(bl.contents_equal(read_bl));
-    } else {
-      ASSERT_TRUE(read_bl.is_zero());
-    }
-
-    // verify that only HEAD object map was updated
-    if ((ictx2->features & RBD_FEATURE_OBJECT_MAP) != 0) {
-      uint8_t state = OBJECT_EXISTS;
-      if (snap_name != NULL) {
-        state = OBJECT_NONEXISTENT;
-      }
-
-      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
-      C_SaferCond ctx;
-      object_map->open(&ctx);
-      ASSERT_EQ(0, ctx.wait());
-
-      std::shared_lock image_locker{ictx2->image_lock};
-      ASSERT_EQ(state, (*object_map)[0]);
-      object_map->put();
-    }
-  }
-}
-
-TEST_F(TestInternal, SnapshotCopyupZerosMigration)
-{
-  REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
-
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  uint64_t features;
-  ASSERT_EQ(0, librbd::get_features(ictx, &features));
-
-  close_image(ictx);
-
-  // migrate an empty image
-  std::string dst_name = get_temp_image_name();
-  librbd::ImageOptions dst_opts;
-  dst_opts.set(RBD_IMAGE_OPTION_FEATURES, features);
-  ASSERT_EQ(0, librbd::api::Migration<>::prepare(m_ioctx, m_image_name,
-                                                 m_ioctx, dst_name,
-                                                 dst_opts));
-
-  librbd::ImageCtx *ictx2;
-  ASSERT_EQ(0, open_image(dst_name, &ictx2));
-
-  ASSERT_EQ(0, snap_create(*ictx2, "snap1"));
-
-  bufferlist bl;
-  bl.append(std::string(256, '1'));
-  ASSERT_EQ(256, ictx2->io_work_queue->write(256, bl.length(), bufferlist{bl},
-                                             0));
-
-  librados::IoCtx snap_ctx;
-  snap_ctx.dup(ictx2->data_ctx);
-  snap_ctx.snap_set_read(CEPH_SNAPDIR);
-
-  librados::snap_set_t snap_set;
-  ASSERT_EQ(0, snap_ctx.list_snaps(ictx2->get_object_name(0), &snap_set));
-
-  // verify that snapshot wasn't affected
-  ASSERT_EQ(1U, snap_set.clones.size());
-  ASSERT_EQ(CEPH_NOSNAP, snap_set.clones[0].cloneid);
-
-  bufferptr read_ptr(256);
-  bufferlist read_bl;
-  read_bl.push_back(read_ptr);
-
-  std::list<std::string> snaps = {"snap1", ""};
-  librbd::io::ReadResult read_result{&read_bl};
-  for (std::list<std::string>::iterator it = snaps.begin();
-       it != snaps.end(); ++it) {
-    const char *snap_name = it->empty() ? NULL : it->c_str();
-    ASSERT_EQ(0, librbd::api::Image<>::snap_set(
-                   ictx2, cls::rbd::UserSnapshotNamespace(), snap_name));
-
-    ASSERT_EQ(256,
-              ictx2->io_work_queue->read(0, 256,
-                                         librbd::io::ReadResult{read_result},
-                                         0));
-    ASSERT_TRUE(read_bl.is_zero());
-
-    ASSERT_EQ(256,
-              ictx2->io_work_queue->read(256, 256,
-                                         librbd::io::ReadResult{read_result},
-                                         0));
-    if (snap_name == NULL) {
-      ASSERT_TRUE(bl.contents_equal(read_bl));
-    } else {
-      ASSERT_TRUE(read_bl.is_zero());
-    }
-
-    // verify that only HEAD object map was updated
-    if ((ictx2->features & RBD_FEATURE_OBJECT_MAP) != 0) {
-      uint8_t state = OBJECT_EXISTS;
-      if (snap_name != NULL) {
-        state = OBJECT_NONEXISTENT;
-      }
-
-      librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx2, ictx2->snap_id);
-      C_SaferCond ctx;
-      object_map->open(&ctx);
-      ASSERT_EQ(0, ctx.wait());
-
-      std::shared_lock image_locker{ictx2->image_lock};
-      ASSERT_EQ(state, (*object_map)[0]);
-      object_map->put();
+      RWLock::WLocker object_map_locker(ictx2->object_map_lock);
+      ASSERT_EQ(state, object_map[0]);
     }
   }
 }
@@ -950,14 +693,14 @@ TEST_F(TestInternal, ResizeCopyup)
                                          true, no_op));
   ASSERT_EQ(0, ictx2->operations->resize(m_image_size - (2 << order) - 32,
                                          true, no_op));
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(ictx2,
-				              cls::rbd::UserSnapshotNamespace(),
-				              "snap1"));
+  ASSERT_EQ(0, librbd::snap_set(ictx2,
+				cls::rbd::UserSnapshotNamespace(),
+				"snap1"));
 
   {
     // hide the parent from the snapshot
-    std::unique_lock image_locker{ictx2->image_lock};
-    ictx2->snap_info.begin()->second.parent = librbd::ParentImageInfo();
+    RWLock::WLocker snap_locker(ictx2->snap_lock);
+    ictx2->snap_info.begin()->second.parent = librbd::ParentInfo();
   }
 
   librbd::io::ReadResult read_result{&read_bl};
@@ -975,7 +718,7 @@ TEST_F(TestInternal, DiscardCopyup)
   REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
 
   CephContext* cct = reinterpret_cast<CephContext*>(_rados.cct());
-  REQUIRE(!cct->_conf.get_val<bool>("rbd_skip_partial_discard"));
+  REQUIRE(!cct->_conf->rbd_skip_partial_discard);
 
   m_image_name = get_temp_image_name();
   m_image_size = 1 << 14;
@@ -1017,14 +760,14 @@ TEST_F(TestInternal, DiscardCopyup)
 
   ASSERT_EQ(static_cast<int>(m_image_size - 64),
             ictx2->io_work_queue->discard(32, m_image_size - 64, false));
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(ictx2,
-				              cls::rbd::UserSnapshotNamespace(),
-				              "snap1"));
+  ASSERT_EQ(0, librbd::snap_set(ictx2,
+				cls::rbd::UserSnapshotNamespace(),
+				"snap1"));
 
   {
     // hide the parent from the snapshot
-    std::unique_lock image_locker{ictx2->image_lock};
-    ictx2->snap_info.begin()->second.parent = librbd::ParentImageInfo();
+    RWLock::WLocker snap_locker(ictx2->snap_lock);
+    ictx2->snap_info.begin()->second.parent = librbd::ParentInfo();
   }
 
   librbd::io::ReadResult read_result{&read_bl};
@@ -1142,7 +885,7 @@ TEST_F(TestInternal, WriteFullCopyup) {
   bl.append(std::string(1 << ictx->order, '1'));
   ASSERT_EQ((ssize_t)bl.length(),
             ictx->io_work_queue->write(0, bl.length(), bufferlist{bl}, 0));
-  ASSERT_EQ(0, ictx->io_work_queue->flush());
+  ASSERT_EQ(0, librbd::flush(ictx));
 
   ASSERT_EQ(0, create_snapshot("snap1", true));
 
@@ -1161,8 +904,7 @@ TEST_F(TestInternal, WriteFullCopyup) {
     }
 
     librbd::NoOpProgressContext remove_no_op;
-    ASSERT_EQ(0, librbd::api::Image<>::remove(m_ioctx, clone_name,
-                                              remove_no_op));
+    ASSERT_EQ(0, librbd::remove(m_ioctx, clone_name, "", remove_no_op));
   } BOOST_SCOPE_EXIT_END;
 
   ASSERT_EQ(0, open_image(clone_name, &ictx2));
@@ -1187,13 +929,26 @@ TEST_F(TestInternal, WriteFullCopyup) {
                                        librbd::io::ReadResult{read_result}, 0));
   ASSERT_TRUE(write_full_bl.contents_equal(read_bl));
 
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(ictx2,
-				              cls::rbd::UserSnapshotNamespace(),
-				              "snap1"));
+  ASSERT_EQ(0, librbd::snap_set(ictx2,
+				cls::rbd::UserSnapshotNamespace(),
+				"snap1"));
   ASSERT_EQ((ssize_t)read_bl.length(),
             ictx2->io_work_queue->read(0, read_bl.length(),
                                        librbd::io::ReadResult{read_result}, 0));
   ASSERT_TRUE(bl.contents_equal(read_bl));
+}
+
+TEST_F(TestInternal, RemoveById) {
+  REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
+
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+
+  std::string image_id = ictx->id;
+  close_image(ictx);
+
+  librbd::NoOpProgressContext remove_no_op;
+  ASSERT_EQ(0, librbd::remove(m_ioctx, "", image_id, remove_no_op));
 }
 
 static int iterate_cb(uint64_t off, size_t len, int exists, void *arg)
@@ -1243,9 +998,7 @@ TEST_F(TestInternal, DiffIterateCloneOverwrite) {
   ASSERT_EQ(0, io_ctx.write(oid, bl, 4096, 4096));
 
   interval_set<uint64_t> diff;
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(ictx,
-                                              cls::rbd::UserSnapshotNamespace(),
-                                              "one"));
+  ASSERT_EQ(0, librbd::snap_set(ictx, cls::rbd::UserSnapshotNamespace(), "one"));
   ASSERT_EQ(0, librbd::api::DiffIterate<>::diff_iterate(
     ictx, cls::rbd::UserSnapshotNamespace(), nullptr, 0, size, true, false,
     iterate_cb, (void *)&diff));
@@ -1298,7 +1051,7 @@ TEST_F(TestInternal, TestCoR)
   printf("generated random write map:\n");
   for (map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
        itr != write_tracker.end(); ++itr)
-    printf("\t [%-8lu, %-8lu]\n",
+    printf("\t [%-8ld, %-8ld]\n",
            (unsigned long)itr->first, (unsigned long)itr->second);
 
   bufferlist bl;
@@ -1307,7 +1060,7 @@ TEST_F(TestInternal, TestCoR)
   printf("write data based on random map\n");
   for (map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
        itr != write_tracker.end(); ++itr) {
-    printf("\twrite object-%-4lu\t\n", (unsigned long)itr->first);
+    printf("\twrite object-%-4ld\t\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.write(itr->second, TEST_IO_SIZE, bl));
   }
 
@@ -1317,7 +1070,7 @@ TEST_F(TestInternal, TestCoR)
   printf("verify written data by reading\n");
   {
     map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
-    printf("\tread object-%-4lu\n", (unsigned long)itr->first);
+    printf("\tread object-%-4ld\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.read(itr->second, TEST_IO_SIZE, readbl));
     ASSERT_TRUE(readbl.contents_equal(bl));
   }
@@ -1358,14 +1111,14 @@ TEST_F(TestInternal, TestCoR)
   printf("read from \"child\"\n");
   {
     map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
-    printf("\tread object-%-4lu\n", (unsigned long)itr->first);
+    printf("\tread object-%-4ld\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.read(itr->second, TEST_IO_SIZE, readbl));
     ASSERT_TRUE(readbl.contents_equal(bl));
   }
 
   for (map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
        itr != write_tracker.end(); ++itr) {
-    printf("\tread object-%-4lu\n", (unsigned long)itr->first);
+    printf("\tread object-%-4ld\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.read(itr->second, TEST_IO_SIZE, readbl));
     ASSERT_TRUE(readbl.contents_equal(bl));
   }
@@ -1373,7 +1126,7 @@ TEST_F(TestInternal, TestCoR)
   printf("read again reversely\n");
   for (map<uint64_t, uint64_t>::iterator itr = --write_tracker.end();
        itr != write_tracker.begin(); --itr) {
-    printf("\tread object-%-4lu\n", (unsigned long)itr->first);
+    printf("\tread object-%-4ld\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.read(itr->second, TEST_IO_SIZE, readbl));
     ASSERT_TRUE(readbl.contents_equal(bl));
   }
@@ -1440,7 +1193,7 @@ TEST_F(TestInternal, FlattenNoEmptyObjects)
   printf("generated random write map:\n");
   for (map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
        itr != write_tracker.end(); ++itr)
-    printf("\t [%-8lu, %-8lu]\n",
+    printf("\t [%-8ld, %-8ld]\n",
            (unsigned long)itr->first, (unsigned long)itr->second);
 
   bufferlist bl;
@@ -1449,7 +1202,7 @@ TEST_F(TestInternal, FlattenNoEmptyObjects)
   printf("write data based on random map\n");
   for (map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
        itr != write_tracker.end(); ++itr) {
-    printf("\twrite object-%-4lu\t\n", (unsigned long)itr->first);
+    printf("\twrite object-%-4ld\t\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.write(itr->second, TEST_IO_SIZE, bl));
   }
 
@@ -1459,7 +1212,7 @@ TEST_F(TestInternal, FlattenNoEmptyObjects)
   printf("verify written data by reading\n");
   {
     map<uint64_t, uint64_t>::iterator itr = write_tracker.begin();
-    printf("\tread object-%-4lu\n", (unsigned long)itr->first);
+    printf("\tread object-%-4ld\n", (unsigned long)itr->first);
     ASSERT_EQ(TEST_IO_SIZE, image.read(itr->second, TEST_IO_SIZE, readbl));
     ASSERT_TRUE(readbl.contents_equal(bl));
   }
@@ -1518,299 +1271,4 @@ TEST_F(TestInternal, FlattenNoEmptyObjects)
   ASSERT_EQ(0, image.close());
 
   rados_ioctx_destroy(d_ioctx);
-}
-
-TEST_F(TestInternal, PoolMetadataConfApply) {
-  REQUIRE_FORMAT_V2();
-
-  librbd::api::PoolMetadata<>::remove(m_ioctx, "conf_rbd_cache");
-
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  bool cache = ictx->cache;
-  std::string rbd_conf_cache = cache ? "true" : "false";
-  std::string new_rbd_conf_cache = !cache ? "true" : "false";
-
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::set(m_ioctx, "conf_rbd_cache",
-                                                new_rbd_conf_cache));
-  ASSERT_EQ(0, ictx->state->refresh());
-  ASSERT_EQ(!cache, ictx->cache);
-
-  ASSERT_EQ(0, ictx->operations->metadata_set("conf_rbd_cache",
-                                              rbd_conf_cache));
-  ASSERT_EQ(cache, ictx->cache);
-
-  ASSERT_EQ(0, ictx->operations->metadata_remove("conf_rbd_cache"));
-  ASSERT_EQ(!cache, ictx->cache);
-
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::remove(m_ioctx, "conf_rbd_cache"));
-  ASSERT_EQ(0, ictx->state->refresh());
-  ASSERT_EQ(cache, ictx->cache);
-  close_image(ictx);
-
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::set(m_ioctx,
-                                                "conf_rbd_default_order",
-                                                "17"));
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::set(m_ioctx,
-                                                "conf_rbd_journal_order",
-                                                "13"));
-  std::string image_name = get_temp_image_name();
-  int order = 0;
-  uint64_t features;
-  ASSERT_TRUE(get_features(&features));
-  ASSERT_EQ(0, create_image_full_pp(m_rbd, m_ioctx, image_name, m_image_size,
-                                    features, false, &order));
-
-  ASSERT_EQ(0, open_image(image_name, &ictx));
-  ASSERT_EQ(ictx->order, 17);
-  ASSERT_EQ(ictx->config.get_val<uint64_t>("rbd_journal_order"), 13U);
-
-  if (is_feature_enabled(RBD_FEATURE_JOURNALING)) {
-    uint8_t order;
-    uint8_t splay_width;
-    int64_t pool_id;
-    C_SaferCond cond;
-    cls::journal::client::get_immutable_metadata(m_ioctx, "journal." + ictx->id,
-                                                 &order, &splay_width, &pool_id,
-                                                 &cond);
-    ASSERT_EQ(0, cond.wait());
-    ASSERT_EQ(order, 13);
-    ASSERT_EQ(0, ictx->operations->update_features(RBD_FEATURE_JOURNALING,
-                                                   false));
-    ASSERT_EQ(0, librbd::api::PoolMetadata<>::set(m_ioctx,
-                                                  "conf_rbd_journal_order",
-                                                  "14"));
-    ASSERT_EQ(0, ictx->operations->update_features(RBD_FEATURE_JOURNALING,
-                                                   true));
-    ASSERT_EQ(ictx->config.get_val<uint64_t>("rbd_journal_order"), 14U);
-
-    C_SaferCond cond1;
-    cls::journal::client::get_immutable_metadata(m_ioctx, "journal." + ictx->id,
-                                                 &order, &splay_width, &pool_id,
-                                                 &cond1);
-    ASSERT_EQ(0, cond1.wait());
-    ASSERT_EQ(order, 14);
-  }
-
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::remove(m_ioctx,
-                                                   "conf_rbd_default_order"));
-  ASSERT_EQ(0, librbd::api::PoolMetadata<>::remove(m_ioctx,
-                                                   "conf_rbd_journal_order"));
-}
-
-TEST_F(TestInternal, Sparsify) {
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  bool sparsify_supported = is_sparsify_supported(ictx->data_ctx,
-                                                  ictx->get_object_name(10));
-  bool sparse_read_supported = is_sparse_read_supported(
-      ictx->data_ctx, ictx->get_object_name(10));
-
-  std::cout << "sparsify_supported=" << sparsify_supported << std::endl;
-  std::cout << "sparse_read_supported=" << sparse_read_supported << std::endl;
-
-  librbd::NoOpProgressContext no_op;
-  ASSERT_EQ(0, ictx->operations->resize((1 << ictx->order) * 20, true, no_op));
-
-  bufferlist bl;
-  bl.append(std::string(4096, '\0'));
-
-  ASSERT_EQ((ssize_t)bl.length(),
-            ictx->io_work_queue->write(0, bl.length(), bufferlist{bl}, 0));
-
-  ASSERT_EQ((ssize_t)bl.length(),
-            ictx->io_work_queue->write((1 << ictx->order) * 1 + 512,
-                                       bl.length(), bufferlist{bl}, 0));
-
-  bl.append(std::string(4096, '1'));
-  bl.append(std::string(4096, '\0'));
-  bl.append(std::string(4096, '2'));
-  bl.append(std::string(4096 - 1, '\0'));
-  ASSERT_EQ((ssize_t)bl.length(),
-            ictx->io_work_queue->write((1 << ictx->order) * 10, bl.length(),
-                                       bufferlist{bl}, 0));
-
-  bufferlist bl2;
-  bl2.append(std::string(4096 - 1, '\0'));
-  ASSERT_EQ((ssize_t)bl2.length(),
-            ictx->io_work_queue->write((1 << ictx->order) * 10 + 4096 * 10,
-                                       bl2.length(), bufferlist{bl2}, 0));
-
-  ASSERT_EQ(0, ictx->io_work_queue->flush());
-
-  ASSERT_EQ(0, ictx->operations->sparsify(4096, no_op));
-
-  bufferptr read_ptr(bl.length());
-  bufferlist read_bl;
-  read_bl.push_back(read_ptr);
-
-  librbd::io::ReadResult read_result{&read_bl};
-  ASSERT_EQ((ssize_t)read_bl.length(),
-            ictx->io_work_queue->read((1 << ictx->order) * 10, read_bl.length(),
-                                      librbd::io::ReadResult{read_result}, 0));
-  ASSERT_TRUE(bl.contents_equal(read_bl));
-
-  std::string oid = ictx->get_object_name(0);
-  uint64_t size;
-  ASSERT_EQ(-ENOENT, ictx->data_ctx.stat(oid, &size, NULL));
-
-  oid = ictx->get_object_name(1);
-  ASSERT_EQ(-ENOENT, ictx->data_ctx.stat(oid, &size, NULL));
-
-  oid = ictx->get_object_name(10);
-  std::map<uint64_t, uint64_t> m;
-  std::map<uint64_t, uint64_t> expected_m;
-  auto read_len = bl.length();
-  bl.clear();
-  if (sparsify_supported && sparse_read_supported) {
-    expected_m = {{4096 * 1, 4096}, {4096 * 3, 4096}};
-    bl.append(std::string(4096, '1'));
-    bl.append(std::string(4096, '2'));
-  } else {
-    expected_m = {{0, 4096 * 4}};
-    bl.append(std::string(4096, '\0'));
-    bl.append(std::string(4096, '1'));
-    bl.append(std::string(4096, '\0'));
-    bl.append(std::string(4096, '2'));
-  }
-  read_bl.clear();
-  EXPECT_EQ(static_cast<int>(expected_m.size()),
-            ictx->data_ctx.sparse_read(oid, m, read_bl, read_len, 0));
-  EXPECT_EQ(m, expected_m);
-  EXPECT_TRUE(bl.contents_equal(read_bl));
-}
-
-
-TEST_F(TestInternal, SparsifyClone) {
-  REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
-
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  bool sparsify_supported = is_sparsify_supported(ictx->data_ctx,
-                                                  ictx->get_object_name(10));
-  std::cout << "sparsify_supported=" << sparsify_supported << std::endl;
-
-  librbd::NoOpProgressContext no_op;
-  ASSERT_EQ(0, ictx->operations->resize((1 << ictx->order) * 10, true, no_op));
-
-  ASSERT_EQ(0, create_snapshot("snap", true));
-  std::string clone_name = get_temp_image_name();
-  int order = ictx->order;
-  ASSERT_EQ(0, librbd::clone(m_ioctx, m_image_name.c_str(), "snap", m_ioctx,
-                             clone_name.c_str(), ictx->features, &order, 0, 0));
-  close_image(ictx);
-
-  ASSERT_EQ(0, open_image(clone_name, &ictx));
-
-  BOOST_SCOPE_EXIT_ALL(this, &ictx, clone_name) {
-    close_image(ictx);
-    librbd::NoOpProgressContext no_op;
-    EXPECT_EQ(0, librbd::api::Image<>::remove(m_ioctx, clone_name, no_op));
-  };
-
-  ASSERT_EQ(0, ictx->operations->resize((1 << ictx->order) * 20, true, no_op));
-
-  bufferlist bl;
-  bl.append(std::string(4096, '\0'));
-
-  ASSERT_EQ((ssize_t)bl.length(),
-            ictx->io_work_queue->write(0, bl.length(), bufferlist{bl}, 0));
-
-  bl.append(std::string(4096, '1'));
-  bl.append(std::string(4096, '\0'));
-  bl.append(std::string(4096, '2'));
-  bl.append(std::string(4096, '\0'));
-  ASSERT_EQ((ssize_t)bl.length(),
-            ictx->io_work_queue->write((1 << ictx->order) * 10, bl.length(),
-                                       bufferlist{bl}, 0));
-  ASSERT_EQ(0, ictx->io_work_queue->flush());
-
-  ASSERT_EQ(0, ictx->operations->sparsify(4096, no_op));
-
-  bufferptr read_ptr(bl.length());
-  bufferlist read_bl;
-  read_bl.push_back(read_ptr);
-
-  librbd::io::ReadResult read_result{&read_bl};
-  ASSERT_EQ((ssize_t)read_bl.length(),
-            ictx->io_work_queue->read((1 << ictx->order) * 10, read_bl.length(),
-                                      librbd::io::ReadResult{read_result}, 0));
-  ASSERT_TRUE(bl.contents_equal(read_bl));
-
-  std::string oid = ictx->get_object_name(0);
-  uint64_t size;
-  ASSERT_EQ(0, ictx->data_ctx.stat(oid, &size, NULL));
-  ASSERT_EQ(0, ictx->data_ctx.read(oid, read_bl, 4096, 0));
-}
-
-TEST_F(TestInternal, MissingDataPool) {
-  REQUIRE_FORMAT_V2();
-
-  librbd::ImageCtx *ictx;
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, snap_create(*ictx, "snap1"));
-  std::string header_oid = ictx->header_oid;
-  close_image(ictx);
-
-  // emulate non-existent data pool
-  int64_t pool_id = 1234;
-  std::string pool_name;
-  int r;
-  while ((r = _rados.pool_reverse_lookup(pool_id, &pool_name)) == 0) {
-    pool_id++;
-  }
-  ASSERT_EQ(r, -ENOENT);
-  bufferlist bl;
-  using ceph::encode;
-  encode(pool_id, bl);
-  ASSERT_EQ(0, m_ioctx.omap_set(header_oid, {{"data_pool_id", bl}}));
-
-  ASSERT_EQ(0, open_image(m_image_name, &ictx));
-
-  ASSERT_FALSE(ictx->data_ctx.is_valid());
-  ASSERT_EQ(pool_id, librbd::api::Image<>::get_data_pool_id(ictx));
-
-  librbd::image_info_t info;
-  ASSERT_EQ(0, librbd::info(ictx, info, sizeof(info)));
-
-  vector<librbd::snap_info_t> snaps;
-  EXPECT_EQ(0, librbd::api::Snapshot<>::list(ictx, snaps));
-  EXPECT_EQ(1U, snaps.size());
-  EXPECT_EQ("snap1", snaps[0].name);
-
-  bufferptr read_ptr(256);
-  bufferlist read_bl;
-  read_bl.push_back(read_ptr);
-  librbd::io::ReadResult read_result{&read_bl};
-  ASSERT_EQ(-ENODEV,
-            ictx->io_work_queue->read(0, 256,
-                                      librbd::io::ReadResult{read_result}, 0));
-  ASSERT_EQ(-ENODEV,
-            ictx->io_work_queue->write(0, bl.length(), bufferlist{bl}, 0));
-  ASSERT_EQ(-ENODEV, ictx->io_work_queue->discard(0, 1, 256));
-  ASSERT_EQ(-ENODEV,
-            ictx->io_work_queue->writesame(0, bl.length(), bufferlist{bl}, 0));
-  uint64_t mismatch_off;
-  ASSERT_EQ(-ENODEV,
-            ictx->io_work_queue->compare_and_write(0, bl.length(),
-                                                   bufferlist{bl},
-                                                   bufferlist{bl},
-                                                   &mismatch_off, 0));
-  ASSERT_EQ(-ENODEV, ictx->io_work_queue->flush());
-
-  ASSERT_EQ(-ENODEV, snap_create(*ictx, "snap2"));
-  ASSERT_EQ(0, ictx->operations->snap_remove(cls::rbd::UserSnapshotNamespace(),
-                                             "snap1"));
-
-  librbd::NoOpProgressContext no_op;
-  ASSERT_EQ(-ENODEV, ictx->operations->resize(0, true, no_op));
-
-  close_image(ictx);
-
-  ASSERT_EQ(0, librbd::api::Image<>::remove(m_ioctx, m_image_name, no_op));
-
-  ASSERT_EQ(0, create_image_pp(m_rbd, m_ioctx, m_image_name, m_image_size));
 }

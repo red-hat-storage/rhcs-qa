@@ -3,7 +3,7 @@
 #include <iostream>
 using namespace std;
 
-int print(const string &s) {
+int print(string s) {
   filepath fp = s;
   cout << "s = " << s << "   filepath = " << fp << endl;
   cout << "  depth " << fp.depth() << endl;

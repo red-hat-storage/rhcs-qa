@@ -2,6 +2,7 @@
 rgw multisite configuration routines
 """
 import argparse
+import contextlib
 import logging
 import random
 import string
@@ -10,7 +11,6 @@ from util.rgw import rgwadmin, wait_for_radosgw
 from util.rados import create_ec_pool, create_replicated_pool
 from rgw_multi import multisite
 from rgw_multi.zone_rados import RadosZone as RadosZone
-from rgw_multi.zone_ps import PSZone as PSZone
 
 from teuthology.orchestra import run
 from teuthology import misc
@@ -33,7 +33,6 @@ class RGWMultisite(Task):
 
     * 'is_master' is passed on the command line as --master
     * 'is_default' is passed on the command line as --default
-    * 'is_pubsub' is used to create a zone with tier-type=pubsub
     * 'endpoints' given as client names are replaced with actual endpoints
 
             zonegroups:
@@ -79,9 +78,6 @@ class RGWMultisite(Task):
                   - name: test-zone2
                     is_default: true
                     endpoints: [c2.client.0]
-                  - name: test-zone3
-                    is_pubsub: true
-                    endpoints: [c1.client.1]
 
     """
     def __init__(self, ctx, config):
@@ -191,8 +187,7 @@ class Cluster(multisite.Cluster):
         """ radosgw-admin command """
         args = args or []
         args += ['--cluster', self.name]
-        args += ['--debug-rgw', str(kwargs.pop('debug_rgw', 0))]
-        args += ['--debug-ms', str(kwargs.pop('debug_ms', 0))]
+        args += ['--debug-rgw', '0']
         if kwargs.pop('read_only', False):
             args += ['--rgw-cache-enabled', 'false']
         kwargs['decode'] = False
@@ -222,7 +217,7 @@ class Gateway(multisite.Gateway):
             # insert zone args before the first |
             pipe = args.index(run.Raw('|'))
             args = args[0:pipe] + zone.zone_args() + args[pipe:]
-        except ValueError:
+        except ValueError, e:
             args += zone.zone_args()
         self.daemon.command_kwargs['args'] = args
 
@@ -230,7 +225,7 @@ class Gateway(multisite.Gateway):
         """ (re)start the daemon """
         self.daemon.restart()
         # wait until startup completes
-        wait_for_radosgw(self.endpoint(), self.remote)
+        wait_for_radosgw(self.endpoint())
 
     def stop(self):
         """ stop the daemon """
@@ -240,7 +235,7 @@ def extract_clusters_and_gateways(ctx, role_endpoints):
     """ create cluster and gateway instances for all of the radosgw roles """
     clusters = {}
     gateways = {}
-    for role, endpoint in role_endpoints.items():
+    for role, (host, port) in role_endpoints.iteritems():
         cluster_name, daemon_type, client_id = misc.split_role(role)
         # find or create the cluster by name
         cluster = clusters.get(cluster_name)
@@ -253,8 +248,7 @@ def extract_clusters_and_gateways(ctx, role_endpoints):
             raise ConfigError('no daemon for role=%s cluster=%s type=rgw id=%s' % \
                               (role, cluster_name, client_id))
         (remote,) = ctx.cluster.only(role).remotes.keys()
-        gateways[role] = Gateway(role, remote, daemon, endpoint.hostname,
-                endpoint.port, cluster)
+        gateways[role] = Gateway(role, remote, daemon, host, port, cluster)
     return clusters, gateways
 
 def create_realm(cluster, config):
@@ -373,10 +367,7 @@ def create_zonegroup(cluster, gateways, period, config):
 def create_zone(ctx, cluster, gateways, creds, zonegroup, config):
     """ create a zone with the given configuration """
     zone = multisite.Zone(config['name'], zonegroup, cluster)
-    if config.pop('is_pubsub', False):
-        zone = PSZone(config['name'], zonegroup, cluster)
-    else:
-        zone = RadosZone(config['name'], zonegroup, cluster)
+    zone = RadosZone(config['name'], zonegroup, cluster)
 
     # collect Gateways for the zone's endpoints
     endpoints = config.get('endpoints')
@@ -415,7 +406,7 @@ def create_zone_pools(ctx, zone):
     gateway = zone.gateways[0]
     cluster = zone.cluster
     for pool_config in zone.data.get('placement_pools', []):
-        pool_name = pool_config['val']['storage_classes']['STANDARD']['data_pool']
+        pool_name = pool_config['val']['data_pool']
         if ctx.rgw.ec_data_pool:
             create_ec_pool(gateway.remote, pool_name, zone.name, 64,
                            ctx.rgw.erasure_code_profile, cluster.name, 'rgw')

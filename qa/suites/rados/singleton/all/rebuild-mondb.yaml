@@ -14,13 +14,10 @@ openstack:
 tasks:
 - install:
 - ceph:
-    pre-mgr-commands:
-      - sudo ceph config set mgr mgr/devicehealth/enable_monitoring false --force
     log-whitelist:
       - no reply from
       - overall HEALTH_
       - \(MON_DOWN\)
-      - \(MGR_DOWN\)
       - \(OSDMAP_FLAGS\)
       - \(OSD_
       - \(PG_

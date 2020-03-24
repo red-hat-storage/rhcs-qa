@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 source copy_func.sh
 allparms=$*
 cmdv=$1

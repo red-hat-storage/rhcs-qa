@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
 echo "getting iogen"
 wget http://download.ceph.com/qa/iogen_3.1p0.tar
 tar -xvzf iogen_3.1p0.tar
-cd iogen_3.1p0
+cd iogen*
 echo "making iogen"
 make
 echo "running iogen"

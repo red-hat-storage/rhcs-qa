@@ -2,6 +2,7 @@
 Dump_stuck command
 """
 import logging
+import re
 import time
 
 import ceph_manager
@@ -12,14 +13,14 @@ log = logging.getLogger(__name__)
 
 def check_stuck(manager, num_inactive, num_unclean, num_stale, timeout=10):
     """
-    Do checks.  Make sure get_stuck_pgs return the right amount of information, then
+    Do checks.  Make sure get_stuck_pgs return the right amout of information, then
     extract health information from the raw_cluster_cmd and compare the results with
     values passed in.  This passes if all asserts pass.
  
     :param num_manager: Ceph manager
     :param num_inactive: number of inaactive pages that are stuck
     :param num_unclean: number of unclean pages that are stuck
-    :param num_stale: number of stale pages that are stuck
+    :paran num_stale: number of stale pages that are stuck
     :param timeout: timeout value for get_stuck_pgs calls
     """
     inactive = manager.get_stuck_pgs('inactive', timeout)
@@ -47,7 +48,7 @@ def task(ctx, config):
 
     timeout = 60
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
+    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
 
     manager = ceph_manager.CephManager(
         mon,
@@ -58,7 +59,7 @@ def task(ctx, config):
     manager.flush_pg_stats([0, 1])
     manager.wait_for_clean(timeout)
 
-    manager.raw_cluster_cmd('tell', 'mon.a', 'injectargs', '--',
+    manager.raw_cluster_cmd('tell', 'mon.0', 'injectargs', '--',
 #                            '--mon-osd-report-timeout 90',
                             '--mon-pg-stuck-threshold 10')
 

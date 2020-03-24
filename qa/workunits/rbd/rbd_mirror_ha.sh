@@ -1,13 +1,9 @@
-#!/bin/sh -ex
+#!/bin/sh
 #
 # rbd_mirror_ha.sh - test rbd-mirror daemons in HA mode
 #
 
-RBD_MIRROR_INSTANCES=${RBD_MIRROR_INSTANCES:-7}
-
 . $(dirname $0)/rbd_mirror_helpers.sh
-
-setup
 
 is_leader()
 {
@@ -17,7 +13,7 @@ is_leader()
     test -n "${pool}" || pool=${POOL}
 
     admin_daemon "${CLUSTER1}:${instance}" \
-		 rbd mirror status ${pool} ${CLUSTER2}${PEER_CLUSTER_SUFFIX} |
+		 rbd mirror status ${pool} ${CLUSTER2} |
 	grep '"leader": true'
 }
 
@@ -27,7 +23,7 @@ wait_for_leader()
 
     for s in 1 1 2 4 4 4 4 4 8 8 8 8 16 16 32 64; do
 	sleep $s
-	for instance in `seq 0 ${LAST_MIRROR_INSTANCE}`; do
+	for instance in `seq 0 9`; do
 	    is_leader ${instance} || continue
 	    LEADER=${instance}
 	    return 0
@@ -71,8 +67,7 @@ test_replay()
 	wait_for_replay_complete ${CLUSTER1}:${LEADER} ${CLUSTER2} ${POOL} \
 				 ${image}
 	wait_for_status_in_pool_dir ${CLUSTER1} ${POOL} ${image} 'up+replaying' \
-                                    'master_position' \
-                                    "${MIRROR_USER_ID_PREFIX}${LEADER} on $(hostname -s)"
+				    'master_position'
 	if [ -z "${RBD_MIRROR_USE_RBD_MIRROR}" ]; then
 	    wait_for_status_in_pool_dir ${CLUSTER2} ${POOL} ${image} \
 					'down+unknown'
@@ -208,3 +203,5 @@ for i in 0 1 2 3 4 5; do
 done
 
 stop_mirror ${CLUSTER1}:${LEADER}
+
+echo OK

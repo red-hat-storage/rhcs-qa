@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/bash -x
 
-set -ex
+set -e
 
 basedir=`echo $0 | sed 's/[^/]*$//g'`.
 testdir="$1"

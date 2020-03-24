@@ -9,11 +9,10 @@
 #include "common/WorkQueue.h"
 #include <boost/shared_ptr.hpp>
 #include <gmock/gmock.h>
-#include "include/ceph_assert.h"
+#include "include/assert.h"
 
 namespace librados {
 class TestRadosClient;
-class MockTestMemCluster;
 class MockTestMemIoCtxImpl;
 class MockTestMemRadosClient;
 }
@@ -35,10 +34,6 @@ ACTION_P2(CompleteContext, wq, r) {
   context_wq->queue(arg0, r);
 }
 
-ACTION_P(GetReference, ref_object) {
-  ref_object->get();
-}
-
 MATCHER_P(ContentsEqual, bl, "") {
   // TODO fix const-correctness of bufferlist
   return const_cast<bufferlist &>(arg).contents_equal(
@@ -58,8 +53,6 @@ public:
   void TearDown() override;
 
   void expect_test_features(librbd::MockImageCtx &mock_image_ctx);
-
-  librados::MockTestMemCluster& get_mock_cluster();
 
 private:
   static TestClusterRef s_test_cluster;

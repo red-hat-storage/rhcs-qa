@@ -4,6 +4,7 @@
 #include "KeyValueDBMemory.h"
 #include <map>
 #include <set>
+#include "include/memory.h"
 #include <iostream>
 
 using namespace std;
@@ -57,7 +58,7 @@ public:
       return 0;
     }
     --it;
-    ceph_assert(it != db->db.end());
+    assert(it != db->db.end());
     ready = true;
     return 0;
   }
@@ -85,7 +86,7 @@ public:
       return 0;
     }
 
-    ceph_assert(it != db->db.end());
+    assert(it != db->db.end());
 
     ready = true;
     return 0;
@@ -98,7 +99,7 @@ public:
       ready = false;
       return 0;
     }
-    ceph_assert(it != db->db.end());
+    assert(it != db->db.end());
     ready = true;
     return 0;
   }
@@ -234,8 +235,8 @@ int KeyValueDBMemory::rm_range_keys(const string &prefix, const string &start, c
   return 0;
 }
 
-KeyValueDB::WholeSpaceIterator KeyValueDBMemory::get_wholespace_iterator() {
-  return std::shared_ptr<KeyValueDB::WholeSpaceIteratorImpl>(
+KeyValueDB::WholeSpaceIterator KeyValueDBMemory::_get_iterator() {
+  return ceph::shared_ptr<KeyValueDB::WholeSpaceIteratorImpl>(
     new WholeSpaceMemIterator(this)
   );
 }

@@ -7,4 +7,3 @@ overrides:
     conf:
       client:
         rbd cache: true
-        rbd cache policy: writeback

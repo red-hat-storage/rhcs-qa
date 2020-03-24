@@ -1,4 +1,4 @@
-  $ ceph-authtool kring --create-keyring --gen-key --mode 0644
+  $ ceph-authtool kring --create-keyring --gen-key
   creating kring
 
   $ ceph-authtool --cap osd 'allow rx pool=swimming' kring

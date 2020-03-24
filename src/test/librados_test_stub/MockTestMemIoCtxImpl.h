@@ -27,8 +27,7 @@ public:
     return m_mock_client;
   }
 
-  MOCK_METHOD0(clone, TestIoCtxImpl*());
-  TestIoCtxImpl *do_clone() {
+  TestIoCtxImpl *clone() override {
     TestIoCtxImpl *io_ctx_impl = new ::testing::NiceMock<MockTestMemIoCtxImpl>(
       m_mock_client, m_client, get_pool_id(), get_pool_name(), get_pool());
     io_ctx_impl->set_snap_read(get_snap_read());
@@ -44,13 +43,6 @@ public:
     return TestMemIoCtxImpl::aio_notify(o, c, bl, timeout_ms, pbl);
   }
 
-  MOCK_METHOD5(aio_operate, int(const std::string&, TestObjectOperationImpl&,
-                                AioCompletionImpl*, SnapContext*, int));
-  int do_aio_operate(const std::string& o, TestObjectOperationImpl& ops,
-                     AioCompletionImpl* c, SnapContext* snapc, int flags) {
-    return TestMemIoCtxImpl::aio_operate(o, ops, c, snapc, flags);
-  }
-
   MOCK_METHOD4(aio_watch, int(const std::string& o, AioCompletionImpl *c,
                               uint64_t *handle, librados::WatchCtx2 *ctx));
   int do_aio_watch(const std::string& o, AioCompletionImpl *c,
@@ -61,22 +53,6 @@ public:
   MOCK_METHOD2(aio_unwatch, int(uint64_t handle, AioCompletionImpl *c));
   int do_aio_unwatch(uint64_t handle, AioCompletionImpl *c) {
     return TestMemIoCtxImpl::aio_unwatch(handle, c);
-  }
-
-  MOCK_METHOD1(assert_exists, int(const std::string &));
-  int do_assert_exists(const std::string &oid) {
-    return TestMemIoCtxImpl::assert_exists(oid);
-  }
-
-  MOCK_METHOD3(create, int(const std::string&, bool, const SnapContext &));
-  int do_create(const std::string& oid, bool exclusive,
-                const SnapContext &snapc) {
-    return TestMemIoCtxImpl::create(oid, exclusive, snapc);
-  }
-
-  MOCK_METHOD3(cmpext, int(const std::string&, uint64_t, bufferlist&));
-  int do_cmpext(const std::string& oid, uint64_t off, bufferlist& cmp_bl) {
-    return TestMemIoCtxImpl::cmpext(oid, off, cmp_bl);
   }
 
   MOCK_METHOD7(exec, int(const std::string& oid,
@@ -184,33 +160,12 @@ public:
     return TestMemIoCtxImpl::write_full(oid, bl, snapc);
   }
 
-
-  MOCK_METHOD5(writesame, int(const std::string& oid, bufferlist& bl,
-                              size_t len, uint64_t off,
-                              const SnapContext &snapc));
-  int do_writesame(const std::string& oid, bufferlist& bl, size_t len,
-                   uint64_t off, const SnapContext &snapc) {
-    return TestMemIoCtxImpl::writesame(oid, bl, len, off, snapc);
-  }
-
-  MOCK_METHOD4(zero, int(const std::string& oid, uint64_t offset,
-                         uint64_t length, const SnapContext &snapc));
-  int do_zero(const std::string& oid, uint64_t offset,
-              uint64_t length, const SnapContext &snapc) {
-    return TestMemIoCtxImpl::zero(oid, offset, length, snapc);
-  }
-
   void default_to_parent() {
     using namespace ::testing;
 
-    ON_CALL(*this, clone()).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_clone));
     ON_CALL(*this, aio_notify(_, _, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_aio_notify));
-    ON_CALL(*this, aio_operate(_, _, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_aio_operate));
     ON_CALL(*this, aio_watch(_, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_aio_watch));
     ON_CALL(*this, aio_unwatch(_, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_aio_unwatch));
-    ON_CALL(*this, assert_exists(_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_assert_exists));
-    ON_CALL(*this, create(_, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_create));
-    ON_CALL(*this, cmpext(_,_,_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_cmpext));
     ON_CALL(*this, exec(_, _, _, _, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_exec));
     ON_CALL(*this, get_instance_id()).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_get_instance_id));
     ON_CALL(*this, list_snaps(_, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_list_snaps));
@@ -226,8 +181,6 @@ public:
     ON_CALL(*this, truncate(_,_,_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_truncate));
     ON_CALL(*this, write(_, _, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_write));
     ON_CALL(*this, write_full(_, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_write_full));
-    ON_CALL(*this, writesame(_, _, _, _, _)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_writesame));
-    ON_CALL(*this, zero(_,_,_,_)).WillByDefault(Invoke(this, &MockTestMemIoCtxImpl::do_zero));
   }
 
 private:

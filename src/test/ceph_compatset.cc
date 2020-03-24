@@ -25,6 +25,9 @@
 #include "include/compat.h"
 #include "include/coredumpctl.h"
 
+//#undef assert
+//#define	assert(foo) if (!(foo)) abort();
+
 #include "include/CompatSet.h"
 
 #include "gtest/gtest.h"

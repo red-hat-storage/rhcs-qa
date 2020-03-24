@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # Copyright (C) 2017 Red Hat <contact@redhat.com>
 #
@@ -147,20 +147,6 @@ function TEST_mon_classes() {
     test "$(get_osds_up rbd SOMETHING)" == "1 2 0" || return 1
     add_something $dir SOMETHING || return 1
 
-    # test create and remove class
-    ceph osd crush class create CLASS || return 1
-    ceph osd crush class create CLASS || return 1 # idempotent
-    ceph osd crush class ls | grep CLASS  || return 1
-    ceph osd crush class rename CLASS TEMP || return 1
-    ceph osd crush class ls | grep TEMP || return 1
-    ceph osd crush class rename TEMP CLASS || return 1
-    ceph osd crush class ls | grep CLASS  || return 1
-    ceph osd erasure-code-profile set myprofile plugin=jerasure technique=reed_sol_van k=2 m=1 crush-failure-domain=osd crush-device-class=CLASS || return 1
-    expect_failure $dir EBUSY ceph osd crush class rm CLASS || return 1
-    ceph osd erasure-code-profile rm myprofile || return 1
-    ceph osd crush class rm CLASS || return 1
-    ceph osd crush class rm CLASS || return 1 # test idempotence
-
     # test rm-device-class
     ceph osd crush set-device-class aaa osd.0 || return 1
     ceph osd tree | grep -q 'aaa' || return 1
@@ -223,7 +209,6 @@ function TEST_mon_classes() {
     ceph osd crush tree --show-shadow | grep 'class_1' || return 1
     ceph osd crush rule create-replicated class_1_rule default host class_1 || return 1
     ceph osd crush class rename class_1 class_2
-    ceph osd crush class rename class_1 class_2 # idempotent
     ceph osd crush class ls | grep 'class_1' && return 1
     ceph osd crush tree --show-shadow | grep 'class_1' && return 1
     ceph osd crush class ls | grep 'class_2' || return 1

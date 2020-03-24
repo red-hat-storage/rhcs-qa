@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash 
 #
 # Copyright (C) 2015 Red Hat <contact@redhat.com>
 # Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
@@ -18,7 +18,7 @@
 # Test that it works from sources with:
 #
 #  CEPH_ERASURE_CODE_BENCHMARK=src/ceph_erasure_code_benchmark  \
-#  PLUGIN_DIRECTORY=build/lib \
+#  PLUGIN_DIRECTORY=src/.libs \
 #      qa/workunits/erasure-code/bench.sh fplot jerasure |
 #      tee qa/workunits/erasure-code/bench.js
 #
@@ -38,7 +38,7 @@
 #
 #  TOTAL_SIZE=$((4 * 1024 * 1024 * 1024)) \
 #  CEPH_ERASURE_CODE_BENCHMARK=src/ceph_erasure_code_benchmark  \
-#  PLUGIN_DIRECTORY=build/lib \
+#  PLUGIN_DIRECTORY=src/.libs \
 #      qa/workunits/erasure-code/bench.sh fplot jerasure |
 #      tee qa/workunits/erasure-code/bench.js
 #
@@ -182,7 +182,7 @@ fi
 # Local Variables:
 # compile-command: "\
 #   CEPH_ERASURE_CODE_BENCHMARK=../../../src/ceph_erasure_code_benchmark \
-#   PLUGIN_DIRECTORY=../../../build/lib \
+#   PLUGIN_DIRECTORY=../../../src/.libs \
 #   ./bench.sh
 # "
 # End:

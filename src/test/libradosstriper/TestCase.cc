@@ -3,7 +3,6 @@
 
 #include <errno.h>
 #include "test/librados/test.h"
-#include "test/librados/test_cxx.h"
 #include "test/libradosstriper/TestCase.h"
 
 using namespace libradosstriper;

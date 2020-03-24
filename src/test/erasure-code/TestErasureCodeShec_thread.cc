@@ -94,7 +94,7 @@ void* thread1(void* pParam)
 
   instance.disable_dlclose = true;
   {
-    std::lock_guard l{instance.lock};
+    Mutex::Locker l(instance.lock);
     __erasure_code_init((char*) "shec", (char*) "");
   }
   std::cout << "__erasure_code_init finish " << std::endl;
@@ -173,9 +173,9 @@ void* thread1(void* pParam)
     }
 
     //decode
-    r = shec->_decode(set<int>(want_to_decode, want_to_decode + 2),
-		      encoded,
-		      &decoded);
+    r = shec->decode(set<int>(want_to_decode, want_to_decode + 2),
+		     encoded,
+		     &decoded);
 
     EXPECT_EQ(0, r);
     EXPECT_EQ(2u, decoded.size());

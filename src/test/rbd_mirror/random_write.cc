@@ -42,19 +42,20 @@ void rbd_bencher_completion(void *c, void *pc);
 
 struct rbd_bencher {
   librbd::Image *image;
-  ceph::mutex lock = ceph::make_mutex("rbd_bencher::lock");
-  ceph::condition_variable cond;
+  Mutex lock;
+  Cond cond;
   int in_flight;
 
   explicit rbd_bencher(librbd::Image *i)
     : image(i),
+      lock("rbd_bencher::lock"),
       in_flight(0) {
   }
 
   bool start_write(int max, uint64_t off, uint64_t len, bufferlist& bl,
                    int op_flags) {
     {
-      std::lock_guard l{lock};
+      Mutex::Locker l(lock);
       if (in_flight >= max)
         return false;
       in_flight++;
@@ -67,9 +68,11 @@ struct rbd_bencher {
   }
 
   void wait_for(int max) {
-    std::unique_lock l{lock};
+    Mutex::Locker l(lock);
     while (in_flight > max) {
-      cond.wait_for(l, 200ms);
+      utime_t dur;
+      dur.set_from_double(.2);
+      cond.WaitInterval(lock, dur);
     }
   }
 
@@ -84,10 +87,10 @@ void rbd_bencher_completion(void *vc, void *pc) {
     cout << "write error: " << cpp_strerror(ret) << std::endl;
     exit(ret < 0 ? -ret : ret);
   }
-  b->lock.lock();
+  b->lock.Lock();
   b->in_flight--;
-  b->cond.notify_all();
-  b->lock.unlock();
+  b->cond.Signal();
+  b->lock.Unlock();
   c->release();
 }
 
@@ -102,7 +105,7 @@ void write_image(librbd::Image &image) {
 
   uint64_t size = 0;
   image.size(&size);
-  ceph_assert(size != 0);
+  assert(size != 0);
 
   vector<uint64_t> thread_offset;
   uint64_t i;
@@ -151,18 +154,17 @@ int main(int argc, const char **argv)
 {
   std::vector<const char*> args;
   argv_to_vec(argc, argv, args);
-  if (args.empty()) {
-    cerr << argv[0] << ": -h or --help for usage" << std::endl;
-    exit(1);
-  }
-  if (ceph_argparse_need_usage(args)) {
-    usage();
-    exit(0);
-  }
+  env_to_vec(args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
+
+  for (auto i = args.begin(); i != args.end(); ++i) {
+    if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
+      usage();
+      return EXIT_SUCCESS;
+    }
+  }
 
   if (args.size() < 2) {
     usage();

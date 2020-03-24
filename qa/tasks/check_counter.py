@@ -4,6 +4,7 @@ import json
 
 from teuthology.task import Task
 from teuthology import misc
+import ceph_manager
 
 log = logging.getLogger(__name__)
 
@@ -37,9 +38,6 @@ class CheckCounter(Task):
         log.info("START")
 
     def end(self):
-        overrides = self.ctx.config.get('overrides', {})
-        misc.deep_merge(self.config, overrides.get('check-counter', {}))
-
         cluster_name = self.config.get('cluster_name', None)
         dry_run = self.config.get('dry_run', False)
         targets = self.config.get('counters', {})

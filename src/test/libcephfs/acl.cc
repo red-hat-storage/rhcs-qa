@@ -21,9 +21,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef __linux__
 #include <sys/xattr.h>
-#endif
 
 static size_t acl_ea_size(int count)
 {
@@ -242,7 +240,7 @@ TEST(ACL, DefaultACL) {
   // set default acl
   ASSERT_EQ(ceph_setxattr(cmount, test_dir1, ACL_EA_DEFAULT, acl1_buf, acl_buf_size, 0), 0);
 
-  char test_dir2[262];
+  char test_dir2[256];
   sprintf(test_dir2, "%s/dir2", test_dir1);
   ASSERT_EQ(ceph_mkdir(cmount, test_dir2, 0755), 0);
 
@@ -260,7 +258,7 @@ TEST(ACL, DefaultACL) {
     ASSERT_EQ(check_acl_and_mode(acl2_buf, acl_buf_size, stx.stx_mode), 0);
   }
 
-  char test_file1[262];
+  char test_file1[256];
   sprintf(test_file1, "%s/file1", test_dir1);
   int fd = ceph_open(cmount, test_file1, O_CREAT|O_RDWR, 0666);
   ASSERT_GT(fd, 0);

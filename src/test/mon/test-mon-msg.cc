@@ -21,10 +21,10 @@
 #include "global/global_init.h"
 #include "global/global_context.h"
 #include "common/ceph_argparse.h"
-#include "common/version.h"
 #include "common/dout.h"
 #include "common/debug.h"
-#include "common/ceph_mutex.h"
+#include "common/Cond.h"
+#include "common/Mutex.h"
 #include "common/Timer.h"
 #include "common/errno.h"
 #include "mon/MonClient.h"
@@ -35,7 +35,7 @@
 #include "gtest/gtest.h"
 
 #include "common/config.h"
-#include "include/ceph_assert.h"
+#include "include/assert.h"
 
 #include "messages/MMonProbe.h"
 #include "messages/MRoute.h"
@@ -54,7 +54,7 @@ protected:
   Messenger *msg;
   MonClient monc;
 
-  ceph::mutex lock = ceph::make_mutex("mon-msg-test::lock");
+  Mutex lock;
 
   set<int> wanted;
 
@@ -64,7 +64,8 @@ public:
     : Dispatcher(cct_),
       cct(cct_),
       msg(NULL),
-      monc(cct_)
+      monc(cct_),
+      lock("mon-msg-test::lock")
   { }
 
 
@@ -79,20 +80,20 @@ public:
   int init_messenger() {
     dout(1) << __func__ << dendl;
 
-    std::string public_msgr_type = cct->_conf->ms_public_type.empty() ? cct->_conf.get_val<std::string>("ms_type") : cct->_conf->ms_public_type;
+    std::string public_msgr_type = cct->_conf->ms_public_type.empty() ? cct->_conf->get_val<std::string>("ms_type") : cct->_conf->ms_public_type;
     msg = Messenger::create(cct, public_msgr_type, entity_name_t::CLIENT(-1),
                             "test-mon-msg", 0, 0);
-    ceph_assert(msg != NULL);
+    assert(msg != NULL);
     msg->set_default_policy(Messenger::Policy::lossy_client(0));
     dout(0) << __func__ << " starting messenger at "
-            << msg->get_myaddrs() << dendl;
+            << msg->get_myaddr() << dendl;
     msg->start();
     return 0;
   }
 
   int init_monc() {
     dout(1) << __func__ << dendl;
-    ceph_assert(msg != NULL);
+    assert(msg != NULL);
     int err = monc.build_initial_monmap();
     if (err < 0) {
       derr << __func__ << " error building monmap: "
@@ -218,13 +219,14 @@ class MonMsgTest : public MonClientHelper,
                    public ::testing::Test
 {
 protected:
-  int reply_type = 0;
+  int reply_type;
   Message *reply_msg = nullptr;
-  ceph::mutex lock = ceph::make_mutex("lock");
-  ceph::condition_variable cond;
+  Mutex lock;
+  Cond cond;
 
   MonMsgTest() :
-    MonClientHelper(g_ceph_context) { }
+    MonClientHelper(g_ceph_context),
+    lock("lock") { }
 
 public:
   void SetUp() override {
@@ -245,33 +247,36 @@ public:
   }
 
   void handle_wanted(Message *m) override {
-    std::lock_guard l{lock};
+    lock.Lock();
     // caller will put() after they call us, so hold on to a ref
     m->get();
     reply_msg = m;
-    cond.notify_all();
+    cond.Signal();
+    lock.Unlock();
   }
 
   Message *send_wait_reply(Message *m, int t, double timeout=30.0) {
-    std::unique_lock l{lock};
+    lock.Lock();
     reply_type = t;
     add_wanted(t);
     send_message(m);
 
-    std::cv_status status = std::cv_status::no_timeout;
+    int err = 0;
     if (timeout > 0) {
+      utime_t cond_timeout;
+      cond_timeout.set_from_double(timeout);
       utime_t s = ceph_clock_now();
-      status = cond.wait_for(l, ceph::make_timespan(timeout));
+      err = cond.WaitInterval(lock, cond_timeout);
       utime_t e = ceph_clock_now();
       dout(20) << __func__ << " took " << (e-s) << " seconds" << dendl;
     } else {
-      cond.wait(l);
+      err = cond.Wait(lock);
     }
     rm_wanted(t);
-    l.unlock();
-    if (status == std::cv_status::timeout) {
-      dout(20) << __func__ << " error: " << cpp_strerror(ETIMEDOUT) << dendl;
-      return (Message*)((long)-ETIMEDOUT);
+    lock.Unlock();
+    if (err > 0) {
+      dout(20) << __func__ << " error: " << cpp_strerror(err) << dendl;
+      return (Message*)((long)-err);
     }
 
     if (!reply_msg)
@@ -285,8 +290,7 @@ public:
 TEST_F(MonMsgTest, MMonProbeTest)
 {
   Message *m = new MMonProbe(get_monmap()->fsid,
-			     MMonProbe::OP_PROBE, "b", false,
-			     ceph_release());
+                        MMonProbe::OP_PROBE, "b", false);
   Message *r = send_wait_reply(m, MSG_MON_PROBE);
   ASSERT_NE(IS_ERR(r), 0);
   ASSERT_EQ(PTR_ERR(r), -ETIMEDOUT);
@@ -297,6 +301,7 @@ TEST_F(MonMsgTest, MRouteTest)
   Message *payload = new MGenericMessage(CEPH_MSG_SHUTDOWN);
   MRoute *m = new MRoute;
   m->msg = payload;
+  m->dest = msg->get_myinst();
   Message *r = send_wait_reply(m, CEPH_MSG_SHUTDOWN);
   // we want an error
   ASSERT_NE(IS_ERR(r), 0);
@@ -310,7 +315,7 @@ TEST_F(MonMsgTest, MRouteTest)
 TEST_F(MonMsgTest, MMonJoin)
 {
   Message *m = new MMonJoin(get_monmap()->fsid, string("client"),
-                            msg->get_myaddrs());
+                            msg->get_myaddr());
   send_wait_reply(m, MSG_MON_PAXOS, 10.0);
 
   int r = monc.get_monmap();
@@ -325,9 +330,9 @@ int main(int argc, char *argv[])
 
   auto cct = global_init(nullptr, args,
 			 CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 0);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->apply_changes(NULL);
   ::testing::InitGoogleTest(&argc, argv);
 
   return RUN_ALL_TESTS();

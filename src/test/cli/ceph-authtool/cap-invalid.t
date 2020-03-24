@@ -1,4 +1,4 @@
-  $ ceph-authtool kring --create-keyring --gen-key --mode 0644
+  $ ceph-authtool kring --create-keyring --gen-key
   creating kring
 
 # TODO is this nice?

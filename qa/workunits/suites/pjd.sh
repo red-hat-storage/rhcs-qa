@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -e
 
 wget http://download.ceph.com/qa/pjd-fstest-20090130-RC-aclfixes.tgz
 tar zxvf pjd*.tgz
-cd pjd-fstest-20090130-RC
+cd pjd*
 make clean
 make
 cd ..

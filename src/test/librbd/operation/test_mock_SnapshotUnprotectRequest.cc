@@ -51,8 +51,8 @@ public:
   void expect_set_protection_status(MockImageCtx &mock_image_ctx,
                                     uint64_t snap_id, uint8_t status, int r) {
     bufferlist bl;
-    encode(snap_id, bl);
-    encode(status, bl);
+    ::encode(snap_id, bl);
+    ::encode(status, bl);
 
     auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
                                exec(mock_image_ctx.header_oid, _, StrEq("rbd"),
@@ -87,7 +87,7 @@ public:
   void expect_get_children(MockImageCtx &mock_image_ctx, size_t pools, int r) {
     bufferlist bl;
     std::set<std::string> children;
-    encode(children, bl);
+    ::encode(children, bl);
 
     auto &expect = EXPECT_CALL(get_mock_io_ctx(mock_image_ctx.md_ctx),
                                exec(RBD_CHILDREN, _, StrEq("rbd"), StrEq("get_children"), _,
@@ -128,7 +128,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, Success) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -153,7 +153,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, GetSnapIdMissing) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(-ENOENT, cond_ctx.wait());
@@ -179,7 +179,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, IsSnapUnprotectedError) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(-EBADMSG, cond_ctx.wait());
@@ -205,7 +205,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, SnapAlreadyUnprotected) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(-EINVAL, cond_ctx.wait());
@@ -234,7 +234,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, SetProtectionStatusError) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(-EINVAL, cond_ctx.wait());
@@ -267,7 +267,7 @@ TEST_F(TestMockOperationSnapshotUnprotectRequest, ChildrenExist) {
   MockSnapshotUnprotectRequest *req = new MockSnapshotUnprotectRequest(
     mock_image_ctx, &cond_ctx, cls::rbd::UserSnapshotNamespace(), "snap1");
   {
-    std::shared_lock owner_locker{mock_image_ctx.owner_lock};
+    RWLock::RLocker owner_locker(mock_image_ctx.owner_lock);
     req->send();
   }
   ASSERT_EQ(-EBUSY, cond_ctx.wait());

@@ -19,9 +19,11 @@
 #include <map>
 #include <set>
 #include <vector>
-#include <experimental/filesystem>       // For path
 
-namespace fs = std::experimental::filesystem;
+#include <boost/filesystem/path.hpp>       // For path
+#include <boost/filesystem/operations.hpp> // For exists, is_directory
+
+namespace bfs = boost::filesystem;
 
 using socket_results = std::map<std::string, std::string>;
 using test_functions =
@@ -41,8 +43,8 @@ public:
 
   void exec();
 
-  void mod_for_vstart(const std::string& dir) {
-    socketdir = dir;
+  void mod_for_vstart() {
+    socketdir = "./out";
     prefix = "";
   }
 
@@ -54,10 +56,10 @@ private:
 
   bool init_sockets();
   bool gather_socket_output();
-  std::string get_result(const std::string &target, const std::string &command) const;
+  std::string get_result(const std::string target, const std::string command) const;
 
   std::pair<std::string, std::string>
-  run_command(AdminSocketClient &client, const std::string &raw_command,
+  run_command(AdminSocketClient &client, const std::string raw_command,
               bool send_untouched = false);
 
   bool run_tests() const;
@@ -70,7 +72,7 @@ private:
   std::map<std::string, test_functions> tests;
 
   std::string prefix = "ceph-";
-  fs::path socketdir = "/var/run/ceph";
+  bfs::path socketdir = "/var/run/ceph";
 };
 
 #endif // CEPH_ADMIN_SOCKET_OUTPUT_H

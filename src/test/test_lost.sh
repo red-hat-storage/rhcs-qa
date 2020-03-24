@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -x
+#!/bin/bash -x
 
 #
 # Test the lost object logic
@@ -27,7 +26,7 @@ setup() {
 	for pool in `./ceph osd pool ls`; do
 	    local size=`./ceph osd pool get ${pool} size | awk '{print $2}'`
 	    if [ "${size}" -gt "${CEPH_NUM_OSD}" ]; then
-		./ceph osd pool set ${pool} size ${CEPH_NUM_OSD} --yes-i-really-mean-it
+		./ceph osd pool set ${pool} size ${CEPH_NUM_OSD}
 		changed=1
 	    fi
 	done
@@ -223,7 +222,8 @@ all_osds_die_impl() {
 }
 
 all_osds_die() {
-	setup 3 'osd mon report interval = 3
+	setup 3 'osd mon report interval max = 60
+	osd mon report interval min = 3
 	mon osd report timeout = 60'
 
 	all_osds_die_impl

@@ -1,8 +1,7 @@
-#!/usr/bin/env bash
+#/bin/bash -fv
 #
 # Set up a vm on packstack.  Use the iso in RHEL_ISO (defaults to home dir)
 #
-set -fv
 source ./copy_func.sh
 source ./fix_conf_file.sh
 openstack_node=${1}

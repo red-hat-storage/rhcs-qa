@@ -4,31 +4,26 @@
 #ifndef LIBRADOS_MOCK_TEST_MEM_CLUSTER_H
 #define LIBRADOS_MOCK_TEST_MEM_CLUSTER_H
 
-#include "include/common_fwd.h"
 #include "test/librados_test_stub/TestMemCluster.h"
 #include "test/librados_test_stub/MockTestMemRadosClient.h"
 #include "gmock/gmock.h"
 
+struct CephContext;
 
 namespace librados {
 
 class TestRadosClient;
 
-class MockTestMemCluster : public TestMemCluster {
+class MockTestMemCluster : public TestCluster {
 public:
-  MockTestMemCluster() {
-    default_to_dispatch();
+  TestRadosClient *create_rados_client(CephContext *cct) override {
+    return new ::testing::NiceMock<librados::MockTestMemRadosClient>(
+      cct, &m_mem_cluster);
   }
 
-  MOCK_METHOD1(create_rados_client, TestRadosClient*(CephContext*));
-  MockTestMemRadosClient* do_create_rados_client(CephContext *cct) {
-    return new ::testing::NiceMock<MockTestMemRadosClient>(cct, this);
-  }
+private:
+  TestMemCluster m_mem_cluster;
 
-  void default_to_dispatch() {
-    using namespace ::testing;
-    ON_CALL(*this, create_rados_client(_)).WillByDefault(Invoke(this, &MockTestMemCluster::do_create_rados_client));
-  }
 };
 
 } // namespace librados

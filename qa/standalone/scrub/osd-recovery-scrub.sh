@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 #
 # Copyright (C) 2017 Red Hat <contact@redhat.com>
 #
@@ -25,7 +25,6 @@ function run() {
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
     CEPH_ARGS+="--mon-host=$CEPH_MON "
 
-    export -n CEPH_CLI_TEST_DUP_COMMAND
     local funcs=${@:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
     for func in $funcs ; do
         $func $dir || return 1
@@ -66,7 +65,7 @@ function TEST_recovery_scrub() {
     pids=""
     for pg in $(seq 0 $(expr $PGS - 1))
     do
-        run_in_background pids pg_scrub $poolid.$(printf "%x" $pg)
+        run_in_background pids pg_scrub $poolid.$(echo "{ obase=16; $pg }" | bc | tr '[:upper:]' '[:lower:]')
     done
     ceph pg dump pgs
     wait_background pids
@@ -83,8 +82,7 @@ function TEST_recovery_scrub() {
         ERRORS=$(expr $ERRORS + 1)
     fi
 
-    # Work around for http://tracker.ceph.com/issues/38195
-    kill_daemons $dir #|| return 1
+    kill_daemons $dir || return 1
 
     declare -a err_strings
     err_strings[0]="not scheduling scrubs due to active recovery"
@@ -129,4 +127,3 @@ main osd-recovery-scrub "$@"
 # Local Variables:
 # compile-command: "cd build ; make -j4 && \
 #    ../qa/run-standalone.sh osd-recovery-scrub.sh"
-# End:

@@ -7,11 +7,11 @@
 
 # allow passwordless access for debugging
 - |
-  #!/usr/bin/env bash
+  #!/bin/bash
   exec passwd -d ubuntu
 
 - |
-  #!/usr/bin/env bash
+  #!/bin/bash
 
   # mount a NFS share for storing logs
   apt-get update

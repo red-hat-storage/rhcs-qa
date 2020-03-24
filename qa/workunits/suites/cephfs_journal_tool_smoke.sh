@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -e
 set -x
 
-export BIN="${BIN:-cephfs-journal-tool --rank=cephfs:0}"
+export BIN="${BIN:-cephfs-journal-tool}"
 export JOURNAL_FILE=/tmp/journal.bin
 export JSON_OUTPUT=/tmp/json.tmp
 export BINARY_OUTPUT=/tmp/binary.tmp

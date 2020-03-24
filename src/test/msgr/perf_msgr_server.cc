@@ -24,12 +24,10 @@ using namespace std;
 
 #include "common/ceph_argparse.h"
 #include "common/debug.h"
-#include "common/WorkQueue.h"
 #include "global/global_init.h"
 #include "msg/Messenger.h"
 #include "messages/MOSDOp.h"
 #include "messages/MOSDOpReply.h"
-#include "auth/DummyAuth.h"
 
 class ServerDispatcher : public Dispatcher {
   uint64_t think_time;
@@ -66,7 +64,7 @@ class ServerDispatcher : public Dispatcher {
     }
     void _process_finish(Message *m) override { }
     void _clear() override {
-      ceph_assert(messages.empty());
+      assert(messages.empty());
     }
   } op_wq;
 
@@ -100,8 +98,11 @@ class ServerDispatcher : public Dispatcher {
     //cerr << __func__ << " reply message=" << m << std::endl;
     op_wq.queue(m);
   }
-  int ms_handle_authentication(Connection *con) override {
-    return 1;
+  bool ms_verify_authorizer(Connection *con, int peer_type, int protocol,
+                            bufferlist& authorizer, bufferlist& authorizer_reply,
+                            bool& isvalid, CryptoKey& session_key) override {
+    isvalid = true;
+    return true;
   }
 };
 
@@ -110,16 +111,12 @@ class MessengerServer {
   string type;
   string bindaddr;
   ServerDispatcher dispatcher;
-  DummyAuthClientServer dummy_auth;
 
  public:
-  MessengerServer(const string &t, const string &addr, int threads, int delay):
-      msgr(NULL), type(t), bindaddr(addr), dispatcher(threads, delay),
-      dummy_auth(g_ceph_context) {
+  MessengerServer(string t, string addr, int threads, int delay):
+      msgr(NULL), type(t), bindaddr(addr), dispatcher(threads, delay) {
     msgr = Messenger::create(g_ceph_context, type, entity_name_t::OSD(0), "server", 0, 0);
     msgr->set_default_policy(Messenger::Policy::stateless_server(0));
-    dummy_auth.auth_registry.refresh_config();
-      msgr->set_auth_server(&dummy_auth);
   }
   ~MessengerServer() {
     msgr->shutdown();
@@ -148,10 +145,9 @@ int main(int argc, char **argv)
   argv_to_vec(argc, (const char **)argv, args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->apply_changes(NULL);
 
   if (args.size() < 3) {
     usage(argv[0]);
@@ -160,7 +156,7 @@ int main(int argc, char **argv)
 
   int worker_threads = atoi(args[1]);
   int think_time = atoi(args[2]);
-  std::string public_msgr_type = g_ceph_context->_conf->ms_public_type.empty() ? g_ceph_context->_conf.get_val<std::string>("ms_type") : g_ceph_context->_conf->ms_public_type;
+  std::string public_msgr_type = g_ceph_context->_conf->ms_public_type.empty() ? g_ceph_context->_conf->get_val<std::string>("ms_type") : g_ceph_context->_conf->ms_public_type;
 
   cerr << " This tool won't handle connection error alike things, " << std::endl;
   cerr << "please ensure the proper network environment to test." << std::endl;

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 declare -A rsapub
 for fulln in $*; do
     sname=`echo $fulln | sed 's/\..*//'`

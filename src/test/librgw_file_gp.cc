@@ -26,6 +26,7 @@
 #include "gtest/gtest.h"
 #include "common/ceph_argparse.h"
 #include "common/debug.h"
+#include "global/global_init.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -77,7 +78,7 @@ namespace {
     std::vector<ZPage*> pages;
     struct iovec* iovs;
 
-    explicit ZPageSet(int n) {
+    ZPageSet(int n) {
       pages.reserve(n);
       iovs = (struct iovec*) calloc(n, sizeof(struct iovec));
       for (int page_ix = 0; page_ix < n; ++page_ix) {
@@ -178,21 +179,20 @@ TEST(LibRGW, INIT) {
 }
 
 TEST(LibRGW, MOUNT) {
-  int ret = rgw_mount2(rgw, uid.c_str(), access_key.c_str(), secret_key.c_str(),
-                       "/", &fs, RGW_MOUNT_FLAG_NONE);
+  int ret = rgw_mount(rgw, uid.c_str(), access_key.c_str(), secret_key.c_str(),
+		      &fs, RGW_MOUNT_FLAG_NONE);
   ASSERT_EQ(ret, 0);
   ASSERT_NE(fs, nullptr);
 }
 
 TEST(LibRGW, LOOKUP_BUCKET) {
   int ret = rgw_lookup(fs, fs->root_fh, bucket_name.c_str(), &bucket_fh,
-		       nullptr, 0, RGW_LOOKUP_FLAG_NONE);
+		       RGW_LOOKUP_FLAG_NONE);
   ASSERT_EQ(ret, 0);
 }
 
 extern "C" {
   static bool r2_cb(const char* name, void *arg, uint64_t offset,
-		    struct stat *st, uint32_t st_mask,
 		    uint32_t flags) {
     // don't need arg--it would point to fids
     fids.push_back(fid_type(name, offset, nullptr));
@@ -222,7 +222,7 @@ TEST(LibRGW, LIST_OBJECTS) {
 TEST(LibRGW, LOOKUP_OBJECT) {
   if (do_get || do_stat || do_put || do_bulk || do_readv || do_writev) {
     int ret = rgw_lookup(fs, bucket_fh, object_name.c_str(), &object_fh,
-			 nullptr, 0, RGW_LOOKUP_FLAG_CREATE);
+			RGW_LOOKUP_FLAG_CREATE);
     ASSERT_EQ(ret, 0);
   }
 }
@@ -471,7 +471,7 @@ int main(int argc, char *argv[])
     }
   }
 
-  /* don't accidentally run as anonymous */
+  /* dont accidentally run as anonymous */
   if ((access_key == "") ||
       (secret_key == "")) {
     std::cout << argv[0] << " no AWS credentials, exiting" << std::endl;

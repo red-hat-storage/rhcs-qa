@@ -4,7 +4,6 @@ Run fsx on an rbd image
 import contextlib
 import logging
 
-from teuthology.exceptions import ConfigError
 from teuthology.parallel import parallel
 from teuthology import misc as teuthology
 
@@ -47,7 +46,7 @@ def _run_one_client(ctx, config, role):
     krbd = config.get('krbd', False)
     nbd = config.get('nbd', False)
     testdir = teuthology.get_testdir(ctx)
-    (remote,) = ctx.cluster.only(role).remotes.keys()
+    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
 
     args = []
     if krbd or nbd:
@@ -69,15 +68,8 @@ def _run_one_client(ctx, config, role):
             config.get('valgrind')
         )
 
-    cluster_name, type_, client_id = teuthology.split_role(role)
-    if type_ != 'client':
-        msg = 'client role ({0}) must be a client'.format(role)
-        raise ConfigError(msg)
-
     args.extend([
         'ceph_test_librbd_fsx',
-        '--cluster', cluster_name,
-        '--id', client_id,
         '-d', # debug output for all operations
         '-W', '-R', # mmap doesn't work with rbd
         '-p', str(config.get('progress_interval', 100)), # show progress
@@ -100,14 +92,10 @@ def _run_one_client(ctx, config, role):
         args.append('-U') # -U disables randomized striping
     if not config.get('punch_holes', True):
         args.append('-H') # -H disables discard ops
-    if config.get('deep_copy', False):
-        args.append('-g') # -g deep copy instead of clone
     if config.get('journal_replay', False):
         args.append('-j') # -j replay all IO events from journal
-    if config.get('keep_images', False):
-        args.append('-k') # -k keep images on success
     args.extend([
-        config.get('pool_name', 'pool_{pool}'.format(pool=role)),
+        'pool_{pool}'.format(pool=role),
         'image_{image}'.format(image=role),
     ])
 

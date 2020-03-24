@@ -7,26 +7,28 @@
 #include "test/journal/RadosTestFixture.h"
 #include <limits>
 #include <list>
-#include <memory>
 
 class TestJournalRecorder : public RadosTestFixture {
 public:
-  using JournalRecorderPtr = std::unique_ptr<journal::JournalRecorder,
-					     std::function<void(journal::JournalRecorder*)>>;
-  JournalRecorderPtr create_recorder(
-      const std::string &oid, const ceph::ref_t<journal::JournalMetadata>& metadata) {
-    JournalRecorderPtr recorder{
-      new journal::JournalRecorder(m_ioctx, oid + ".", metadata, 0),
-      [](journal::JournalRecorder* recorder) {
-	C_SaferCond cond;
-	recorder->shut_down(&cond);
-	cond.wait();
-	delete recorder;
-      }
-    };
-    recorder->set_append_batch_options(0, std::numeric_limits<uint32_t>::max(), 0);
+
+  void TearDown() override {
+    for (std::list<journal::JournalRecorder*>::iterator it = m_recorders.begin();
+         it != m_recorders.end(); ++it) {
+      delete *it;
+    }
+    RadosTestFixture::TearDown();
+  }
+
+  journal::JournalRecorder *create_recorder(const std::string &oid,
+                                            const journal::JournalMetadataPtr &metadata) {
+    journal::JournalRecorder *recorder(new journal::JournalRecorder(
+      m_ioctx, oid + ".", metadata, 0, std::numeric_limits<uint32_t>::max(), 0));
+    m_recorders.push_back(recorder);
     return recorder;
   }
+
+  std::list<journal::JournalRecorder*> m_recorders;
+
 };
 
 TEST_F(TestJournalRecorder, Append) {
@@ -34,10 +36,10 @@ TEST_F(TestJournalRecorder, Append) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
 
-  JournalRecorderPtr recorder = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder = create_recorder(oid, metadata);
 
   journal::Future future1 = recorder->append(123, create_payload("payload"));
 
@@ -51,11 +53,11 @@ TEST_F(TestJournalRecorder, AppendKnownOverflow) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
   ASSERT_EQ(0U, metadata->get_active_set());
 
-  JournalRecorderPtr recorder = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder = create_recorder(oid, metadata);
 
   recorder->append(123, create_payload(std::string(metadata->get_object_size() -
                                                    journal::Entry::get_fixed_size(), '1')));
@@ -73,12 +75,12 @@ TEST_F(TestJournalRecorder, AppendDelayedOverflow) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
   ASSERT_EQ(0U, metadata->get_active_set());
 
-  JournalRecorderPtr recorder1 = create_recorder(oid, metadata);
-  JournalRecorderPtr recorder2 = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder1 = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder2 = create_recorder(oid, metadata);
 
   recorder1->append(234, create_payload(std::string(1, '1')));
   recorder2->append(123, create_payload(std::string(metadata->get_object_size() -
@@ -98,10 +100,10 @@ TEST_F(TestJournalRecorder, FutureFlush) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
 
-  JournalRecorderPtr recorder = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder = create_recorder(oid, metadata);
 
   journal::Future future1 = recorder->append(123, create_payload("payload1"));
   journal::Future future2 = recorder->append(123, create_payload("payload2"));
@@ -118,10 +120,10 @@ TEST_F(TestJournalRecorder, Flush) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
 
-  JournalRecorderPtr recorder = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder = create_recorder(oid, metadata);
 
   journal::Future future1 = recorder->append(123, create_payload("payload1"));
   journal::Future future2 = recorder->append(123, create_payload("payload2"));
@@ -142,11 +144,11 @@ TEST_F(TestJournalRecorder, OverflowCommitObjectNumber) {
   ASSERT_EQ(0, create(oid, 12, 2));
   ASSERT_EQ(0, client_register(oid));
 
-  auto metadata = create_metadata(oid);
+  journal::JournalMetadataPtr metadata = create_metadata(oid);
   ASSERT_EQ(0, init_metadata(metadata));
   ASSERT_EQ(0U, metadata->get_active_set());
 
-  JournalRecorderPtr recorder = create_recorder(oid, metadata);
+  journal::JournalRecorder *recorder = create_recorder(oid, metadata);
 
   recorder->append(123, create_payload(std::string(metadata->get_object_size() -
                                                    journal::Entry::get_fixed_size(), '1')));

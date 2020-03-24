@@ -1,12 +1,9 @@
 # Amazon::S3 is not available on el7
-os_type: ubuntu
 tasks:
+- exec:
+    client.0:
+      - cpan install Amazon::S3
 - workunit:
     clients:
       client.0:
         - rgw/s3_multipart_upload.pl
-overrides:
-  ceph:
-    conf:
-      client:
-        rgw relaxed s3 bucket names: true

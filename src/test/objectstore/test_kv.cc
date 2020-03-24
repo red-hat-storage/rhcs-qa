@@ -21,21 +21,19 @@
 #include "include/Context.h"
 #include "common/ceph_argparse.h"
 #include "global/global_init.h"
+#include "common/Mutex.h"
 #include "common/Cond.h"
 #include "common/errno.h"
 #include "include/stringify.h"
 #include <gtest/gtest.h>
+
+#if GTEST_HAS_PARAM_TEST
 
 class KVTest : public ::testing::TestWithParam<const char*> {
 public:
   boost::scoped_ptr<KeyValueDB> db;
 
   KVTest() : db(0) {}
-
-  string _bl_to_str(bufferlist val) {
-    string str(val.c_str(), val.length());
-    return str;
-  }
 
   void rm_r(string path) {
     string cmd = string("rm -r ") + path;
@@ -201,11 +199,12 @@ struct AppendMOP : public KeyValueDB::MergeOperator {
     const char *ldata, size_t llen,
     const char *rdata, size_t rlen,
     std::string *new_value) override {
+
     *new_value = std::string(ldata, llen) + std::string(rdata, rlen);
   }
   // We use each operator name and each prefix to construct the
   // overall RocksDB operator name for consistency check at open time.
-  const char *name() const override {
+  string name() const override {
     return "Append";
   }
 };
@@ -309,244 +308,36 @@ TEST_P(KVTest, RMRange) {
   fini();
 }
 
-TEST_P(KVTest, RocksDBColumnFamilyTest) {
-  if(string(GetParam()) != "rocksdb")
-    return;
 
-  std::vector<KeyValueDB::ColumnFamily> cfs;
-  cfs.push_back(KeyValueDB::ColumnFamily("cf1", ""));
-  cfs.push_back(KeyValueDB::ColumnFamily("cf2", ""));
-  ASSERT_EQ(0, db->init(g_conf()->bluestore_rocksdb_options));
-  cout << "creating two column families and opening them" << std::endl;
-  ASSERT_EQ(0, db->create_and_open(cout, cfs));
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist value;
-    value.append("value");
-    cout << "write a transaction includes three keys in different CFs" << std::endl;
-    t->set("prefix", "key", value);
-    t->set("cf1", "key", value);
-    t->set("cf2", "key2", value);
-    ASSERT_EQ(0, db->submit_transaction_sync(t));
-  }
-  fini();
-
-  init();
-  ASSERT_EQ(0, db->open(cout, cfs));
-  {
-    bufferlist v1, v2, v3;
-    cout << "reopen db and read those keys" << std::endl;
-    ASSERT_EQ(0, db->get("prefix", "key", &v1));
-    ASSERT_EQ(0, _bl_to_str(v1) != "value");
-    ASSERT_EQ(0, db->get("cf1", "key", &v2));
-    ASSERT_EQ(0, _bl_to_str(v2) != "value");
-    ASSERT_EQ(0, db->get("cf2", "key2", &v3));
-    ASSERT_EQ(0, _bl_to_str(v2) != "value");
-  }
-  {
-    cout << "delete two keys in CFs" << std::endl;
-    KeyValueDB::Transaction t = db->get_transaction();
-    t->rmkey("prefix", "key");
-    t->rmkey("cf2", "key2");
-    ASSERT_EQ(0, db->submit_transaction_sync(t));
-  }
-  fini();
-
-  init();
-  ASSERT_EQ(0, db->open(cout, cfs));
-  {
-    cout << "reopen db and read keys again." << std::endl;
-    bufferlist v1, v2, v3;
-    ASSERT_EQ(-ENOENT, db->get("prefix", "key", &v1));
-    ASSERT_EQ(0, db->get("cf1", "key", &v2));
-    ASSERT_EQ(0, _bl_to_str(v2) != "value");
-    ASSERT_EQ(-ENOENT, db->get("cf2", "key2", &v3));
-  }
-  fini();
-}
-
-TEST_P(KVTest, RocksDBIteratorTest) {
-  if(string(GetParam()) != "rocksdb")
-    return;
-
-  std::vector<KeyValueDB::ColumnFamily> cfs;
-  cfs.push_back(KeyValueDB::ColumnFamily("cf1", ""));
-  ASSERT_EQ(0, db->init(g_conf()->bluestore_rocksdb_options));
-  cout << "creating one column family and opening it" << std::endl;
-  ASSERT_EQ(0, db->create_and_open(cout, cfs));
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist bl1;
-    bl1.append("hello");
-    bufferlist bl2;
-    bl2.append("world");
-    cout << "write some kv pairs into default and new CFs" << std::endl;
-    t->set("prefix", "key1", bl1);
-    t->set("prefix", "key2", bl2);
-    t->set("cf1", "key1", bl1);
-    t->set("cf1", "key2", bl2);
-    ASSERT_EQ(0, db->submit_transaction_sync(t));
-  }
-  {
-    cout << "iterating the default CF" << std::endl;
-    KeyValueDB::Iterator iter = db->get_iterator("prefix");
-    iter->seek_to_first();
-    ASSERT_EQ(1, iter->valid());
-    ASSERT_EQ("key1", iter->key());
-    ASSERT_EQ("hello", _bl_to_str(iter->value()));
-    ASSERT_EQ(0, iter->next());
-    ASSERT_EQ(1, iter->valid());
-    ASSERT_EQ("key2", iter->key());
-    ASSERT_EQ("world", _bl_to_str(iter->value()));
-  }
-  {
-    cout << "iterating the new CF" << std::endl;
-    KeyValueDB::Iterator iter = db->get_iterator("cf1");
-    iter->seek_to_first();
-    ASSERT_EQ(1, iter->valid());
-    ASSERT_EQ("key1", iter->key());
-    ASSERT_EQ("hello", _bl_to_str(iter->value()));
-    ASSERT_EQ(0, iter->next());
-    ASSERT_EQ(1, iter->valid());
-    ASSERT_EQ("key2", iter->key());
-    ASSERT_EQ("world", _bl_to_str(iter->value()));
-  }
-  fini();
-}
-
-TEST_P(KVTest, RocksDBCFMerge) {
-  if(string(GetParam()) != "rocksdb")
-    return;
-
-  shared_ptr<KeyValueDB::MergeOperator> p(new AppendMOP);
-  int r = db->set_merge_operator("cf1",p);
-  if (r < 0)
-    return; // No merge operators for this database type
-  std::vector<KeyValueDB::ColumnFamily> cfs;
-  cfs.push_back(KeyValueDB::ColumnFamily("cf1", ""));
-  ASSERT_EQ(0, db->init(g_conf()->bluestore_rocksdb_options));
-  cout << "creating one column family and opening it" << std::endl;
-  ASSERT_EQ(0, db->create_and_open(cout, cfs));
-
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist v1, v2, v3;
-    v1.append(string("1"));
-    v2.append(string("2"));
-    v3.append(string("3"));
-    t->set("P", "K1", v1);
-    t->set("cf1", "A1", v2);
-    t->rmkey("cf1", "A2");
-    t->merge("cf1", "A2", v3);
-    db->submit_transaction_sync(t);
-  }
-  {
-    bufferlist v1, v2, v3;
-    ASSERT_EQ(0, db->get("P", "K1", &v1));
-    ASSERT_EQ(tostr(v1), "1");
-    ASSERT_EQ(0, db->get("cf1", "A1", &v2));
-    ASSERT_EQ(tostr(v2), "2");
-    ASSERT_EQ(0, db->get("cf1", "A2", &v3));
-    ASSERT_EQ(tostr(v3), "?3");
-  }
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist v1;
-    v1.append(string("1"));
-    t->merge("cf1", "A2", v1);
-    db->submit_transaction_sync(t);
-  }
-  {
-    bufferlist v;
-    ASSERT_EQ(0, db->get("cf1", "A2", &v));
-    ASSERT_EQ(tostr(v), "?31");
-  }
-  fini();
-}
-
-TEST_P(KVTest, RocksDB_estimate_size) {
-  if(string(GetParam()) != "rocksdb")
-    GTEST_SKIP();
-
-  std::vector<KeyValueDB::ColumnFamily> cfs;
-  cfs.push_back(KeyValueDB::ColumnFamily("cf1", ""));
-  ASSERT_EQ(0, db->init(g_conf()->bluestore_rocksdb_options));
-  cout << "creating one column family and opening it" << std::endl;
-  ASSERT_EQ(0, db->create_and_open(cout));
-
-  for(int test = 0; test < 20; test++)
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist v1;
-    v1.append(string(1000, '1'));
-    for (int i = 0; i < 100; i++)
-      t->set("A", to_string(rand()%100000), v1);
-    db->submit_transaction_sync(t);
-    db->compact();
-
-    int64_t size_a = db->estimate_prefix_size("A","");
-    ASSERT_GT(size_a, (test + 1) * 1000 * 100 * 0.5);
-    ASSERT_LT(size_a, (test + 1) * 1000 * 100 * 1.5);
-    int64_t size_a1 = db->estimate_prefix_size("A","1");
-    ASSERT_GT(size_a1, (test + 1) * 1000 * 100 * 0.1 * 0.5);
-    ASSERT_LT(size_a1, (test + 1) * 1000 * 100 * 0.1 * 1.5);
-    int64_t size_b = db->estimate_prefix_size("B","");
-    ASSERT_EQ(size_b, 0);
-  }
-
-  fini();
-}
-
-TEST_P(KVTest, RocksDB_estimate_size_column_family) {
-  if(string(GetParam()) != "rocksdb")
-    GTEST_SKIP();
-
-  std::vector<KeyValueDB::ColumnFamily> cfs;
-  cfs.push_back(KeyValueDB::ColumnFamily("cf1", ""));
-  ASSERT_EQ(0, db->init(g_conf()->bluestore_rocksdb_options));
-  cout << "creating one column family and opening it" << std::endl;
-  ASSERT_EQ(0, db->create_and_open(cout, cfs));
-
-  for(int test = 0; test < 20; test++)
-  {
-    KeyValueDB::Transaction t = db->get_transaction();
-    bufferlist v1;
-    v1.append(string(1000, '1'));
-    for (int i = 0; i < 100; i++)
-      t->set("cf1", to_string(rand()%100000), v1);
-    db->submit_transaction_sync(t);
-    db->compact();
-
-    int64_t size_a = db->estimate_prefix_size("cf1","");
-    ASSERT_GT(size_a, (test + 1) * 1000 * 100 * 0.5);
-    ASSERT_LT(size_a, (test + 1) * 1000 * 100 * 1.5);
-    int64_t size_a1 = db->estimate_prefix_size("cf1","1");
-    ASSERT_GT(size_a1, (test + 1) * 1000 * 100 * 0.1 * 0.5);
-    ASSERT_LT(size_a1, (test + 1) * 1000 * 100 * 0.1 * 1.5);
-    int64_t size_b = db->estimate_prefix_size("B","");
-    ASSERT_EQ(size_b, 0);
-  }
-
-  fini();
-}
-
-INSTANTIATE_TEST_SUITE_P(
+INSTANTIATE_TEST_CASE_P(
   KeyValueDB,
   KVTest,
   ::testing::Values("leveldb", "rocksdb", "memdb"));
 
+#else
+
+// Google Test may not support value-parameterized tests with some
+// compilers. If we use conditional compilation to compile out all
+// code referring to the gtest_main library, MSVC linker will not link
+// that library at all and consequently complain about missing entry
+// point defined in that library (fatal error LNK1561: entry point
+// must be defined). This dummy test keeps gtest_main linked in.
+TEST(DummyTest, ValueParameterizedTestsAreNotSupportedOnThisPlatform) {}
+
+#endif
+
 int main(int argc, char **argv) {
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
+  env_to_vec(args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf.set_val(
+  g_ceph_context->_conf->set_val(
     "enable_experimental_unrecoverable_data_corrupting_features",
     "rocksdb, memdb");
-  g_ceph_context->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->apply_changes(NULL);
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

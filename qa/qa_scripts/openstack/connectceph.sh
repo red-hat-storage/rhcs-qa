@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#/bin/bash -fv
 #
 # Connect openstack node just installed to a ceph cluster.
 #
@@ -9,7 +9,6 @@
 # The directory named files contains templates for the /etc/glance/glance-api.conf,
 # /etc/cinder/cinder.conf, /etc/nova/nova.conf Openstack files
 #
-set -fv
 source ./copy_func.sh
 source ./fix_conf_file.sh
 openstack_node=${1}

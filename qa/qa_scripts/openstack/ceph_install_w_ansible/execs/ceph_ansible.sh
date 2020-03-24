@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 cephnodes=$*
 monnode=$1
 sudo yum -y install ceph-ansible

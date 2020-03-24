@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # Author: Vicente Cheng <freeze.bilsted@gmail.com>
 #

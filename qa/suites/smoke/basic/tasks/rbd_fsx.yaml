@@ -9,16 +9,13 @@ overrides:
       - \(CACHE_POOL_
       - \(SMALLER_PGP_NUM\)
       - \(OBJECT_
-      - \(SLOW_OPS\)
+      - \(REQUEST_SLOW\)
       - \(TOO_FEW_PGS\)
-      - \(OSD_SLOW_PING_TIME
-      - slow request
     conf:
       client:
         rbd cache: true
       global:
         ms inject socket failures: 5000
-        mon client directed command retry: 5
 tasks:
 - install: null
 - ceph:

@@ -12,7 +12,7 @@
 #include "gtest/gtest.h"
 
 // reinclude our assert to clobber the system one
-#include "include/ceph_assert.h"
+#include "include/assert.h"
 
 class TestJournaler : public RadosTestFixture {
 public:
@@ -27,8 +27,7 @@ public:
     RadosTestFixture::SetUp();
     m_journal_id = get_temp_journal_id();
     m_journaler = new journal::Journaler(m_work_queue, m_timer, &m_timer_lock,
-                                         m_ioctx, m_journal_id, CLIENT_ID, {},
-                                         nullptr);
+                                         m_ioctx, m_journal_id, CLIENT_ID, {});
   }
 
   void TearDown() override {
@@ -55,8 +54,8 @@ public:
   }
 
   int register_client(const std::string &client_id, const std::string &desc) {
-    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock, m_ioctx,
-                                 m_journal_id, client_id, {}, nullptr);
+    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+                                 m_ioctx, m_journal_id, client_id, {});
     bufferlist data;
     data.append(desc);
     C_SaferCond cond;
@@ -65,8 +64,8 @@ public:
   }
 
   int update_client(const std::string &client_id, const std::string &desc) {
-    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock, m_ioctx,
-                                 m_journal_id, client_id, {}, nullptr);
+    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+                                 m_ioctx, m_journal_id, client_id, {});
     bufferlist data;
     data.append(desc);
     C_SaferCond cond;
@@ -75,8 +74,8 @@ public:
   }
 
   int unregister_client(const std::string &client_id) {
-    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock, m_ioctx,
-                                 m_journal_id, client_id, {}, nullptr);
+    journal::Journaler journaler(m_work_queue, m_timer, &m_timer_lock,
+                                 m_ioctx, m_journal_id, client_id, {});
     C_SaferCond cond;
     journaler.unregister_client(&cond);
     return cond.wait();

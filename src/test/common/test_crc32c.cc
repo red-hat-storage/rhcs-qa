@@ -31,8 +31,6 @@ TEST(Crc32c, PartialWord) {
   memset((void *)b, 1, 35);
   ASSERT_EQ(2715569182u, ceph_crc32c(0, (unsigned char *)a, 5));
   ASSERT_EQ(440531800u, ceph_crc32c(0, (unsigned char *)b, 35));
-  free((void*)a);
-  free((void*)b);
 }
 
 TEST(Crc32c, Big) {
@@ -41,7 +39,6 @@ TEST(Crc32c, Big) {
   memset(a, 1, len);
   ASSERT_EQ(31583199u, ceph_crc32c(0, (unsigned char *)a, len));
   ASSERT_EQ(1400919119u, ceph_crc32c(1234, (unsigned char *)a, len));
-  free(a);
 }
 
 TEST(Crc32c, Performance) {
@@ -95,7 +92,6 @@ TEST(Crc32c, Performance) {
     ASSERT_EQ(261108528u, val);
   }
 #endif
-  free(a);
 }
 
 

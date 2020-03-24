@@ -8,7 +8,8 @@
 #include "include/buffer.h"
 #include "include/interval_set.h"
 #include "include/int_types.h"
-#include "common/ceph_mutex.h"
+#include "common/Cond.h"
+#include "common/Mutex.h"
 #include "common/RefCountedObj.h"
 #include "common/RWLock.h"
 #include <boost/shared_ptr.hpp>
@@ -22,12 +23,10 @@ namespace librados {
 class TestMemCluster : public TestCluster {
 public:
   typedef std::map<std::string, bufferlist> OMap;
-  typedef std::map<ObjectLocator, OMap> FileOMaps;
-  typedef std::map<ObjectLocator, bufferlist> FileTMaps;
+  typedef std::map<std::string, OMap> FileOMaps;
+  typedef std::map<std::string, bufferlist> FileTMaps;
   typedef std::map<std::string, bufferlist> XAttrs;
-  typedef std::map<ObjectLocator, XAttrs> FileXAttrs;
-  typedef std::set<ObjectHandler*> ObjectHandlers;
-  typedef std::map<ObjectLocator, ObjectHandlers> FileHandlers;
+  typedef std::map<std::string, XAttrs> FileXAttrs;
 
   struct File {
     File();
@@ -41,13 +40,12 @@ public:
     interval_set<uint64_t> snap_overlap;
 
     bool exists;
-    ceph::shared_mutex lock =
-      ceph::make_shared_mutex("TestMemCluster::File::lock");
+    RWLock lock;
   };
   typedef boost::shared_ptr<File> SharedFile;
 
   typedef std::list<SharedFile> FileSnapshots;
-  typedef std::map<ObjectLocator, FileSnapshots> Files;
+  typedef std::map<std::string, FileSnapshots> Files;
 
   typedef std::set<uint64_t> SnapSeqs;
   struct Pool : public RefCountedObject {
@@ -58,24 +56,17 @@ public:
     SnapSeqs snap_seqs;
     uint64_t snap_id = 1;
 
-    ceph::shared_mutex file_lock =
-      ceph::make_shared_mutex("TestMemCluster::Pool::file_lock");
+    RWLock file_lock;
     Files files;
     FileOMaps file_omaps;
     FileTMaps file_tmaps;
     FileXAttrs file_xattrs;
-    FileHandlers file_handlers;
   };
 
   TestMemCluster();
   ~TestMemCluster() override;
 
   TestRadosClient *create_rados_client(CephContext *cct) override;
-
-  int register_object_handler(int64_t pool_id, const ObjectLocator& locator,
-                              ObjectHandler* object_handler) override;
-  void unregister_object_handler(int64_t pool_id, const ObjectLocator& locator,
-                                 ObjectHandler* object_handler) override;
 
   int pool_create(const std::string &pool_name);
   int pool_delete(const std::string &pool_name);
@@ -93,16 +84,15 @@ public:
   bool is_blacklisted(uint32_t nonce) const;
   void blacklist(uint32_t nonce);
 
-  void transaction_start(const ObjectLocator& locator);
-  void transaction_finish(const ObjectLocator& locator);
+  void transaction_start(const std::string &oid);
+  void transaction_finish(const std::string &oid);
 
 private:
 
   typedef std::map<std::string, Pool*>		Pools;
   typedef std::set<uint32_t> Blacklist;
 
-  mutable ceph::mutex m_lock =
-    ceph::make_mutex("TestMemCluster::m_lock");
+  mutable Mutex m_lock;
 
   Pools	m_pools;
   int64_t m_pool_id = 0;
@@ -112,10 +102,8 @@ private:
 
   Blacklist m_blacklist;
 
-  ceph::condition_variable m_transaction_cond;
-  std::set<ObjectLocator> m_transactions;
-
-  Pool *get_pool(const ceph::mutex& lock, int64_t pool_id);
+  Cond m_transaction_cond;
+  std::set<std::string> m_transactions;
 
 };
 

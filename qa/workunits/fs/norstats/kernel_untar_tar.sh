@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # check if there is file changed while being archived
 
 set -e

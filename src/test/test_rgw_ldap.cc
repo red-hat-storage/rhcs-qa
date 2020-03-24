@@ -25,6 +25,7 @@
 #include "gtest/gtest.h"
 #include "common/ceph_argparse.h"
 #include "common/debug.h"
+#include "global/global_init.h"
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -102,7 +103,7 @@ int main(int argc, char *argv[])
     }
   }
 
-  /* don't accidentally run as anonymous */
+  /* dont accidentally run as anonymous */
   if (access_key == "") {
     std::cout << argv[0] << " no AWS credentials, exiting" << std::endl;
     return EPERM;

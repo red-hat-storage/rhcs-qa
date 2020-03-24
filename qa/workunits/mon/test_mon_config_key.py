@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 #
 # test_mon_config_key - Test 'ceph config-key' interface
 #
@@ -43,9 +43,9 @@ SIZES = [
     (50, 0),
     (100, 0),
     (1000, 0),
-    (64 * 1024, 0),
-    (64 * 1024 + 1, -errno.EFBIG),
-    (128 * 1024, -errno.EFBIG)
+    (4096, 0),
+    (4097, -errno.EFBIG),
+    (8192, -errno.EFBIG)
 ]
 
 # tests will be randomly selected from the keys here, and the test

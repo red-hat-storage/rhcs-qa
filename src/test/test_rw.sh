@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -x
+#!/bin/bash -x
 
 #
 # Generic read/write from object store test

@@ -2,7 +2,7 @@
 
 set -e
 
-ceph fs set cephfs allow_new_snaps true --yes-i-really-mean-it
+ceph mds set allow_new_snaps true --yes-i-really-mean-it
 
 #
 # verify that a snap update on a parent realm will induce

@@ -16,7 +16,7 @@ namespace librbd {
 namespace {
 
 struct MockReplayImageCtx : public MockImageCtx {
-  explicit MockReplayImageCtx(ImageCtx &image_ctx) : MockImageCtx(image_ctx) {
+  MockReplayImageCtx(ImageCtx &image_ctx) : MockImageCtx(image_ctx) {
   }
 };
 
@@ -33,35 +33,34 @@ struct ImageRequest<MockReplayImageCtx> {
   static void aio_write(MockReplayImageCtx *ictx, AioCompletion *c,
                         Extents &&image_extents, bufferlist &&bl,
                         int op_flags, const ZTracer::Trace &parent_trace) {
-    ceph_assert(s_instance != nullptr);
+    assert(s_instance != nullptr);
     s_instance->aio_write(c, image_extents, bl, op_flags);
   }
 
-  MOCK_METHOD3(aio_discard, void(AioCompletion *c, const Extents& image_extents,
-                                 uint32_t discard_granularity_bytes));
+  MOCK_METHOD4(aio_discard, void(AioCompletion *c, uint64_t off, uint64_t len,
+                                 bool skip_partial_discard));
   static void aio_discard(MockReplayImageCtx *ictx, AioCompletion *c,
-                          Extents&& image_extents,
-                          uint32_t discard_granularity_bytes,
+                          uint64_t off, uint64_t len,
+                          bool skip_partial_discard,
                           const ZTracer::Trace &parent_trace) {
-    ceph_assert(s_instance != nullptr);
-    s_instance->aio_discard(c, image_extents, discard_granularity_bytes);
+    assert(s_instance != nullptr);
+    s_instance->aio_discard(c, off, len, skip_partial_discard);
   }
 
   MOCK_METHOD1(aio_flush, void(AioCompletion *c));
   static void aio_flush(MockReplayImageCtx *ictx, AioCompletion *c,
-                        FlushSource, const ZTracer::Trace &parent_trace) {
-    ceph_assert(s_instance != nullptr);
+                        const ZTracer::Trace &parent_trace) {
+    assert(s_instance != nullptr);
     s_instance->aio_flush(c);
   }
 
-  MOCK_METHOD4(aio_writesame, void(AioCompletion *c,
-                                   const Extents& image_extents,
+  MOCK_METHOD5(aio_writesame, void(AioCompletion *c, uint64_t off, uint64_t len,
                                    const bufferlist &bl, int op_flags));
   static void aio_writesame(MockReplayImageCtx *ictx, AioCompletion *c,
-                            Extents&& image_extents, bufferlist &&bl,
+                            uint64_t off, uint64_t len, bufferlist &&bl,
                             int op_flags, const ZTracer::Trace &parent_trace) {
-    ceph_assert(s_instance != nullptr);
-    s_instance->aio_writesame(c, image_extents, bl, op_flags);
+    assert(s_instance != nullptr);
+    s_instance->aio_writesame(c, off, len, bl, op_flags);
   }
 
   MOCK_METHOD6(aio_compare_and_write, void(AioCompletion *c, const Extents &image_extents,
@@ -71,7 +70,7 @@ struct ImageRequest<MockReplayImageCtx> {
                                     Extents &&image_extents, bufferlist &&cmp_bl,
                                     bufferlist &&bl, uint64_t *mismatch_offset,
                                     int op_flags, const ZTracer::Trace &parent_trace) {
-    ceph_assert(s_instance != nullptr);
+    assert(s_instance != nullptr);
     s_instance->aio_compare_and_write(c, image_extents, cmp_bl, bl,
                                       mismatch_offset, op_flags);
   }
@@ -117,12 +116,12 @@ MATCHER_P(CStrEq, str, "") {
 }
 
 ACTION_P2(NotifyInvoke, lock, cond) {
-  std::lock_guard locker{*lock};
-  cond->notify_all();
+  Mutex::Locker locker(*lock);
+  cond->Signal();
 }
 
 ACTION_P2(CompleteAioCompletion, r, image_ctx) {
-  image_ctx->op_work_queue->queue(new LambdaContext([this, arg0](int r) {
+  image_ctx->op_work_queue->queue(new FunctionContext([this, arg0](int r) {
       arg0->get();
       arg0->init_time(image_ctx, librbd::io::AIO_TYPE_NONE);
       arg0->set_request_count(1);
@@ -138,7 +137,8 @@ public:
   typedef io::ImageRequest<MockReplayImageCtx> MockIoImageRequest;
   typedef Replay<MockReplayImageCtx> MockJournalReplay;
 
-  TestMockJournalReplay() = default;
+  TestMockJournalReplay() : m_invoke_lock("m_invoke_lock") {
+  }
 
   void expect_accept_ops(MockExclusiveLock &mock_exclusive_lock, bool accept) {
     EXPECT_CALL(mock_exclusive_lock, accept_ops()).WillRepeatedly(
@@ -147,9 +147,8 @@ public:
 
   void expect_aio_discard(MockIoImageRequest &mock_io_image_request,
                           io::AioCompletion **aio_comp, uint64_t off,
-                          uint64_t len, uint32_t discard_granularity_bytes) {
-    EXPECT_CALL(mock_io_image_request, aio_discard(_, io::Extents{{off, len}},
-                                                   discard_granularity_bytes))
+                          uint64_t len, bool skip_partial_discard) {
+    EXPECT_CALL(mock_io_image_request, aio_discard(_, off, len, skip_partial_discard))
                   .WillOnce(SaveArg<0>(aio_comp));
   }
 
@@ -177,21 +176,17 @@ public:
                             io::AioCompletion **aio_comp, uint64_t off,
                             uint64_t len, const char *data) {
     EXPECT_CALL(mock_io_image_request,
-                aio_writesame(_, io::Extents{{off, len}},
-                              BufferlistEqual(data), _))
+                aio_writesame(_, off, len, BufferlistEqual(data), _))
                   .WillOnce(SaveArg<0>(aio_comp));
   }
 
   void expect_aio_compare_and_write(MockIoImageRequest &mock_io_image_request,
                                     io::AioCompletion **aio_comp, uint64_t off,
-                                    uint64_t len, const char *cmp_data,
-                                    const char *data,
+                                    uint64_t len, const char *cmp_data, const char *data,
                                     uint64_t *mismatch_offset) {
     EXPECT_CALL(mock_io_image_request,
                 aio_compare_and_write(_, io::Extents{{off, len}},
-                                      BufferlistEqual(cmp_data),
-                                      BufferlistEqual(data),
-                                      mismatch_offset, _))
+                  BufferlistEqual(cmp_data), BufferlistEqual(data), mismatch_offset, _))
                   .WillOnce(SaveArg<0>(aio_comp));
   }
 
@@ -297,14 +292,14 @@ public:
                     EventEntry &&event_entry, Context *on_ready,
                     Context *on_safe) {
     bufferlist bl;
-    encode(event_entry, bl);
+    ::encode(event_entry, bl);
 
-    auto it = bl.cbegin();
+    bufferlist::iterator it = bl.begin();
     when_process(mock_journal_replay, &it, on_ready, on_safe);
   }
 
   void when_process(MockJournalReplay &mock_journal_replay,
-                    bufferlist::const_iterator *it, Context *on_ready,
+                    bufferlist::iterator *it, Context *on_ready,
                     Context *on_safe) {
     EventEntry event_entry;
     int r = mock_journal_replay.decode(it, &event_entry);
@@ -340,8 +335,10 @@ public:
 
   void wait_for_op_invoked(Context **on_finish, int r) {
     {
-      std::unique_lock locker{m_invoke_lock};      
-      m_invoke_cond.wait(locker, [on_finish] { return *on_finish != nullptr; });
+      Mutex::Locker locker(m_invoke_lock);
+      while (*on_finish == nullptr) {
+        m_invoke_cond.Wait(m_invoke_lock);
+      }
     }
     (*on_finish)->complete(r);
   }
@@ -352,8 +349,8 @@ public:
     return bl;
   }
 
-  ceph::mutex m_invoke_lock = ceph::make_mutex("m_invoke_lock");
-  ceph::condition_variable m_invoke_cond;
+  Mutex m_invoke_lock;
+  Cond m_invoke_cond;
 };
 
 TEST_F(TestMockJournalReplay, AioDiscard) {
@@ -376,11 +373,9 @@ TEST_F(TestMockJournalReplay, AioDiscard) {
   io::AioCompletion *aio_comp;
   C_SaferCond on_ready;
   C_SaferCond on_safe;
-  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456,
-                     ictx->discard_granularity_bytes);
+  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456, ictx->skip_partial_discard);
   when_process(mock_journal_replay,
-               EventEntry{AioDiscardEvent(123, 456,
-                                          ictx->discard_granularity_bytes)},
+               EventEntry{AioDiscardEvent(123, 456, ictx->skip_partial_discard)},
                &on_ready, &on_safe);
 
   when_complete(mock_image_ctx, aio_comp, 0);
@@ -571,11 +566,9 @@ TEST_F(TestMockJournalReplay, IOError) {
   io::AioCompletion *aio_comp;
   C_SaferCond on_ready;
   C_SaferCond on_safe;
-  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456,
-                     ictx->discard_granularity_bytes);
+  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456, ictx->skip_partial_discard);
   when_process(mock_journal_replay,
-               EventEntry{AioDiscardEvent(123, 456,
-                                          ictx->discard_granularity_bytes)},
+               EventEntry{AioDiscardEvent(123, 456, ictx->skip_partial_discard)},
                &on_ready, &on_safe);
 
   when_complete(mock_image_ctx, aio_comp, -EINVAL);
@@ -609,14 +602,12 @@ TEST_F(TestMockJournalReplay, SoftFlushIO) {
     io::AioCompletion *aio_comp;
     io::AioCompletion *flush_comp = nullptr;
     C_SaferCond on_ready;
-    expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456,
-                       ictx->discard_granularity_bytes);
+    expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456, ictx->skip_partial_discard);
     if (i == io_count - 1) {
       expect_aio_flush(mock_io_image_request, &flush_comp);
     }
     when_process(mock_journal_replay,
-                 EventEntry{AioDiscardEvent(123, 456,
-                                            ictx->discard_granularity_bytes)},
+                 EventEntry{AioDiscardEvent(123, 456, ictx->skip_partial_discard)},
                  &on_ready, &on_safes[i]);
     when_complete(mock_image_ctx, aio_comp, 0);
     ASSERT_EQ(0, on_ready.wait());
@@ -681,8 +672,6 @@ TEST_F(TestMockJournalReplay, PauseIO) {
 }
 
 TEST_F(TestMockJournalReplay, Flush) {
-  REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
-
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
@@ -700,11 +689,9 @@ TEST_F(TestMockJournalReplay, Flush) {
   io::AioCompletion *aio_comp = nullptr;
   C_SaferCond on_ready;
   C_SaferCond on_safe;
-  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456,
-                     ictx->discard_granularity_bytes);
+  expect_aio_discard(mock_io_image_request, &aio_comp, 123, 456, ictx->skip_partial_discard);
   when_process(mock_journal_replay,
-               EventEntry{AioDiscardEvent(123, 456,
-                                          ictx->discard_granularity_bytes)},
+               EventEntry{AioDiscardEvent(123, 456, ictx->skip_partial_discard)},
                &on_ready, &on_safe);
 
   when_complete(mock_image_ctx, aio_comp, 0);
@@ -798,8 +785,6 @@ TEST_F(TestMockJournalReplay, BlockedOpFinishError) {
 }
 
 TEST_F(TestMockJournalReplay, MissingOpFinishEvent) {
-  REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
-
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
@@ -830,7 +815,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEvent) {
 					  "snap")},
                &on_snap_remove_ready,
 	       &on_snap_remove_safe);
-  ictx->op_work_queue->drain();
   ASSERT_EQ(0, on_snap_remove_ready.wait());
 
   C_SaferCond on_snap_create_ready;
@@ -841,7 +825,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEvent) {
 					  "snap")},
                &on_snap_create_ready,
 	       &on_snap_create_safe);
-  ictx->op_work_queue->drain();
 
   C_SaferCond on_shut_down;
   mock_journal_replay.shut_down(false, &on_shut_down);
@@ -861,8 +844,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEvent) {
 }
 
 TEST_F(TestMockJournalReplay, MissingOpFinishEventCancelOps) {
-  REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
-
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
@@ -888,7 +869,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEventCancelOps) {
 					  "snap")},
                &on_snap_remove_ready,
 	       &on_snap_remove_safe);
-  ictx->op_work_queue->drain();
   ASSERT_EQ(0, on_snap_remove_ready.wait());
 
   C_SaferCond on_snap_create_ready;
@@ -899,7 +879,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEventCancelOps) {
 					  "snap")},
                &on_snap_create_ready,
 	       &on_snap_create_safe);
-  ictx->op_work_queue->drain();
 
   C_SaferCond on_resume;
   when_replay_op_ready(mock_journal_replay, 123, &on_resume);
@@ -917,8 +896,6 @@ TEST_F(TestMockJournalReplay, MissingOpFinishEventCancelOps) {
 }
 
 TEST_F(TestMockJournalReplay, UnknownOpFinishEvent) {
-  REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
-
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
@@ -1723,8 +1700,8 @@ TEST_F(TestMockJournalReplay, MetadataSetEvent) {
 
   InSequence seq;
   Context *on_finish = nullptr;
-  expect_metadata_set(mock_image_ctx, &on_finish, "key", "value");
   expect_refresh_image(mock_image_ctx, false, 0);
+  expect_metadata_set(mock_image_ctx, &on_finish, "key", "value");
 
   C_SaferCond on_start_ready;
   C_SaferCond on_start_safe;
@@ -1760,8 +1737,8 @@ TEST_F(TestMockJournalReplay, MetadataRemoveEvent) {
 
   InSequence seq;
   Context *on_finish = nullptr;
-  expect_metadata_remove(mock_image_ctx, &on_finish, "key");
   expect_refresh_image(mock_image_ctx, false, 0);
+  expect_metadata_remove(mock_image_ctx, &on_finish, "key");
 
   C_SaferCond on_start_ready;
   C_SaferCond on_start_safe;
@@ -1797,6 +1774,7 @@ TEST_F(TestMockJournalReplay, MetadataRemoveEventDNE) {
 
   InSequence seq;
   Context *on_finish = nullptr;
+  expect_refresh_image(mock_image_ctx, false, 0);
   expect_metadata_remove(mock_image_ctx, &on_finish, "key");
 
   C_SaferCond on_start_ready;
@@ -1835,10 +1813,10 @@ TEST_F(TestMockJournalReplay, UnknownEvent) {
 
   bufferlist bl;
   ENCODE_START(1, 1, bl);
-  encode(static_cast<uint32_t>(-1), bl);
+  ::encode(static_cast<uint32_t>(-1), bl);
   ENCODE_FINISH(bl);
 
-  auto it = bl.cbegin();
+  bufferlist::iterator it = bl.begin();
   C_SaferCond on_ready;
   C_SaferCond on_safe;
   when_process(mock_journal_replay, &it, &on_ready, &on_safe);

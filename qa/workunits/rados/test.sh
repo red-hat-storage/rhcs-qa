@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -ex
+#!/bin/bash -ex
 
 parallel=1
 [ "$1" = "--serial" ] && parallel=0
@@ -15,28 +14,19 @@ trap cleanup EXIT ERR HUP INT QUIT
 declare -A pids
 
 for f in \
-    api_aio api_aio_pp \
-    api_io api_io_pp \
-    api_asio api_list \
-    api_lock api_lock_pp \
-    api_misc api_misc_pp \
-    api_tier_pp \
-    api_pool \
-    api_snapshots api_snapshots_pp \
-    api_stat api_stat_pp \
-    api_watch_notify api_watch_notify_pp \
-    api_cmd api_cmd_pp \
-    api_service api_service_pp \
+    api_aio api_io api_list api_lock api_misc \
+    api_tier api_pool api_snapshots api_stat api_watch_notify api_cmd \
+    api_service \
     api_c_write_operations \
     api_c_read_operations \
     list_parallel \
     open_pools_parallel \
-    delete_pools_parallel
+    delete_pools_parallel \
+    watch_notify
 do
     if [ $parallel -eq 1 ]; then
 	r=`printf '%25s' $f`
-	ff=`echo $f | awk '{print $1}'`
-	bash -o pipefail -exc "ceph_test_rados_$f $color 2>&1 | tee ceph_test_rados_$ff.log | sed \"s/^/$r: /\"" &
+	bash -o pipefail -exc "ceph_test_rados_$f $color 2>&1 | tee ceph_test_rados_$f.log | sed \"s/^/$r: /\"" &
 	pid=$!
 	echo "test $f on pid $pid"
 	pids[$f]=$pid

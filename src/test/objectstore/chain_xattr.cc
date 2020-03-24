@@ -325,7 +325,7 @@ list<string> get_xattrs(int fd)
   while (len > 0) {
     size_t next_len = strlen(buf);
     ret.push_back(string(buf, buf + next_len));
-    ceph_assert(len >= (int)(next_len + 1));
+    assert(len >= (int)(next_len + 1));
     buf += (next_len + 1);
     len -= (next_len + 1);
   }
@@ -348,7 +348,6 @@ TEST(chain_xattr, fskip_chain_cleanup_and_ensure_single_attr)
   const char *file = FILENAME;
   ::unlink(file);
   int fd = ::open(file, O_CREAT|O_RDWR|O_TRUNC, 0700);
-  ceph_assert(fd >= 0);
 
   std::size_t existing_xattrs = get_xattrs(fd).size();
   char buf[800];
@@ -393,7 +392,6 @@ TEST(chain_xattr, skip_chain_cleanup_and_ensure_single_attr)
   const char *file = FILENAME;
   ::unlink(file);
   int fd = ::open(file, O_CREAT|O_RDWR|O_TRUNC, 0700);
-  ceph_assert(fd >= 0);
   std::size_t existing_xattrs = get_xattrs(fd).size();
   ::close(fd);
 
@@ -437,12 +435,11 @@ int main(int argc, char **argv) {
   argv_to_vec(argc, (const char **)argv, args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf.set_val("err_to_stderr", "false");
-  g_ceph_context->_conf.set_val("log_to_stderr", "false");
-  g_ceph_context->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->set_val("err_to_stderr", "false");
+  g_ceph_context->_conf->set_val("log_to_stderr", "false");
+  g_ceph_context->_conf->apply_changes(NULL);
 
   const char* file = FILENAME;
   int x = 1234;

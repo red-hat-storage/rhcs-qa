@@ -1,4 +1,6 @@
 tasks:
+- install:
+- ceph:
 - exec:
     client.0:
-      - sudo ceph fs set cephfs inline_data true --yes-i-really-really-mean-it
+      - sudo ceph mds set inline_data true --yes-i-really-mean-it

@@ -1,4 +1,5 @@
 """Scrub testing"""
+from cStringIO import StringIO
 
 import contextlib
 import json
@@ -30,7 +31,7 @@ def wait_for_victim_pg(manager):
 
 def find_victim_object(ctx, pg, osd):
     """Return a file to be fuzzed"""
-    (osd_remote,) = ctx.cluster.only('osd.%d' % osd).remotes.keys()
+    (osd_remote,) = ctx.cluster.only('osd.%d' % osd).remotes.iterkeys()
     data_path = os.path.join(
         '/var/lib/ceph/osd',
         'ceph-{id}'.format(id=osd),
@@ -40,7 +41,12 @@ def find_victim_object(ctx, pg, osd):
         )
 
     # fuzz time
-    ls_out = osd_remote.sh('sudo ls %s' % data_path)
+    with contextlib.closing(StringIO()) as ls_fp:
+        osd_remote.run(
+            args=['sudo', 'ls', data_path],
+            stdout=ls_fp,
+        )
+        ls_out = ls_fp.getvalue()
 
     # find an object file we can mess with (and not the pg info object)
     osdfilename = next(line for line in ls_out.split('\n')
@@ -300,12 +306,16 @@ def test_list_inconsistent_obj(ctx, manager, osd_remote, pg, acting, osd_id,
             deep_scrub(manager, pg, pool)
             cmd = 'rados list-inconsistent-pg {pool} ' \
                   '--format=json'.format(pool=pool)
-            pgs = json.loads(mon.sh(cmd))
+            with contextlib.closing(StringIO()) as out:
+                mon.run(args=cmd.split(), stdout=out)
+                pgs = json.loads(out.getvalue())
             assert pgs == [pg]
 
             cmd = 'rados list-inconsistent-obj {pg} ' \
                   '--format=json'.format(pg=pg)
-            objs = json.loads(mon.sh(cmd))
+            with contextlib.closing(StringIO()) as out:
+                mon.run(args=cmd.split(), stdout=out)
+                objs = json.loads(out.getvalue())
             assert len(objs['inconsistents']) == 1
 
             checker = InconsistentObjChecker(osd_id, acting, obj_name)
@@ -332,13 +342,12 @@ def task(ctx, config):
         - deep-scrub [0-9]+ errors
         - repair 0 missing, 1 inconsistent objects
         - repair [0-9]+ errors, [0-9]+ fixed
-        - shard [0-9]+ .* : missing
+        - shard [0-9]+ missing
         - deep-scrub 1 missing, 1 inconsistent objects
         - does not match object info size
         - attr name mistmatch
         - deep-scrub 1 missing, 0 inconsistent objects
         - failed to pick suitable auth object
-        - candidate size [0-9]+ info size [0-9]+ mismatch
       conf:
         osd:
           osd deep scrub update digest min age: 0
@@ -349,7 +358,7 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         'scrub_test task only accepts a dict for configuration'
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
+    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
 
     num_osds = teuthology.num_instances_of_type(ctx.cluster, 'osd')
     log.info('num_osds is %s' % num_osds)

@@ -2,8 +2,10 @@
 // vim: ts=8 sw=2 smarttab
 
 #include <boost/algorithm/string.hpp>
+// std::regex support in libstdc++ 4.8 is incomplete, so let's stick to
+// boost::regex now.
+#include <boost/regex.hpp>
 #include <gtest/gtest.h>
-#include <regex>
 #include <sstream>
 #include <string>
 
@@ -32,7 +34,7 @@ TEST(BackTrace, Basic) {
   const unsigned lineno = 1;
   ASSERT_GT(lines.size(), lineno);
   ASSERT_EQ(lines[0].find(pretty_version_to_str()), 1U);
-  std::regex e{"^ 1: "
+  boost::regex e{"^ 1: "
 #ifdef __FreeBSD__
 		 "<foo.*>\\s"
 		 "at\\s.*$"};
@@ -40,5 +42,5 @@ TEST(BackTrace, Basic) {
 		 "\\(foo.*\\)\\s"
 		 "\\[0x[[:xdigit:]]+\\]$"};
 #endif
-  EXPECT_TRUE(std::regex_match(lines[lineno], e));
+  EXPECT_TRUE(boost::regex_match(lines[lineno], e));
 }

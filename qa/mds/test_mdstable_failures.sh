@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -x
+#!/bin/bash -x
 
 for f in `seq 1 8`
 do

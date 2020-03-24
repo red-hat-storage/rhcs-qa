@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -x
+#!/bin/bash -x
 
 #
 # test_common.sh

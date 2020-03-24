@@ -13,36 +13,32 @@
 #ifndef TEST_OBJECTSTORE_STATE_H_
 #define TEST_OBJECTSTORE_STATE_H_
 
+#include "os/ObjectStore.h"
 #include <boost/scoped_ptr.hpp>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int.hpp>
 #include <map>
 #include <vector>
 
-#include "os/ObjectStore.h"
-#include "common/Cond.h"
-
 typedef boost::mt11213b rngen_t;
 
 class TestObjectStoreState {
 public:
   struct coll_entry_t {
+    int m_id;
     spg_t m_pgid;
-    coll_t m_cid;
+    coll_t m_coll;
     ghobject_t m_meta_obj;
-    ObjectStore::CollectionHandle m_ch;
+    ObjectStore::Sequencer m_osr;
     map<int, hobject_t*> m_objects;
     int m_next_object_id;
 
-    coll_entry_t(spg_t pgid, ObjectStore::CollectionHandle& ch,
-		 char *meta_obj_buf)
-      : m_pgid(pgid),
-	m_cid(m_pgid),
+    coll_entry_t(int i, char *coll_buf, char *meta_obj_buf)
+      : m_id(i),
+	m_pgid(pg_t(i, 1), shard_id_t::NO_SHARD),
+	m_coll(m_pgid),
 	m_meta_obj(hobject_t(sobject_t(object_t(meta_obj_buf), CEPH_NOSNAP))),
-	m_ch(ch),
-	m_next_object_id(0) {
-      m_meta_obj.hobj.pool = m_pgid.pool();
-      m_meta_obj.hobj.set_hash(m_pgid.ps());
+      m_osr(coll_buf), m_next_object_id(0) {
     }
     ~coll_entry_t();
 
@@ -62,35 +58,27 @@ public:
 
  protected:
   boost::shared_ptr<ObjectStore> m_store;
-  map<coll_t, coll_entry_t*> m_collections;
-  vector<coll_t> m_collections_ids;
+  map<int, coll_entry_t*> m_collections;
+  vector<int> m_collections_ids;
   int m_next_coll_nr;
   int m_num_objs_per_coll;
   int m_num_objects;
 
   int m_max_in_flight;
   std::atomic<int> m_in_flight = { 0 };
-  ceph::mutex m_finished_lock = ceph::make_mutex("Finished Lock");
-  ceph::condition_variable m_finished_cond;
-
-  void rebuild_id_vec() {
-    m_collections_ids.clear();
-    m_collections_ids.reserve(m_collections.size());
-    for (auto& i : m_collections) {
-      m_collections_ids.push_back(i.first);
-    }
-  }
+  Mutex m_finished_lock;
+  Cond m_finished_cond;
 
   void wait_for_ready() {
-    std::unique_lock locker{m_finished_lock};
-    m_finished_cond.wait(locker, [this] {
-      return m_max_in_flight <= 0 || m_in_flight < m_max_in_flight;
-    });
+    Mutex::Locker locker(m_finished_lock);
+    while ((m_max_in_flight > 0) && (m_in_flight >= m_max_in_flight))
+      m_finished_cond.Wait(m_finished_lock);
   }
 
   void wait_for_done() {
-    std::unique_lock locker{m_finished_lock};
-    m_finished_cond.wait(locker, [this] { return m_in_flight == 0; });
+    Mutex::Locker locker(m_finished_lock);
+    while (m_in_flight)
+      m_finished_cond.Wait(m_finished_lock);
   }
 
   void set_max_in_flight(int max) {
@@ -100,7 +88,7 @@ public:
     m_num_objs_per_coll = val;
   }
 
-  coll_entry_t *get_coll(coll_t cid, bool erase = false);
+  coll_entry_t *get_coll(int key, bool erase = false);
   coll_entry_t *get_coll_at(int pos, bool erase = false);
   int get_next_pool_id() { return m_next_pool++; }
 
@@ -112,11 +100,11 @@ public:
  public:
   explicit TestObjectStoreState(ObjectStore *store) :
     m_next_coll_nr(0), m_num_objs_per_coll(10), m_num_objects(0),
-    m_max_in_flight(0), m_next_pool(2) {
+    m_max_in_flight(0), m_finished_lock("Finished Lock"), m_next_pool(1) {
     m_store.reset(store);
   }
   ~TestObjectStoreState() { 
-    auto it = m_collections.begin();
+    map<int, coll_entry_t*>::iterator it = m_collections.begin();
     while (it != m_collections.end()) {
       if (it->second)
 	delete it->second;
@@ -137,7 +125,7 @@ public:
     return --m_in_flight;
   }
 
-  coll_entry_t *coll_create(spg_t pgid, ObjectStore::CollectionHandle ch);
+  coll_entry_t *coll_create(int id);
 
   class C_OnFinished: public Context {
    protected:
@@ -147,9 +135,9 @@ public:
     explicit C_OnFinished(TestObjectStoreState *state) : m_state(state) { }
 
     void finish(int r) override {
-      std::lock_guard locker{m_state->m_finished_lock};
+      Mutex::Locker locker(m_state->m_finished_lock);
       m_state->dec_in_flight();
-      m_state->m_finished_cond.notify_all();
+      m_state->m_finished_cond.Signal();
 
     }
   };

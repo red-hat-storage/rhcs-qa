@@ -6,6 +6,11 @@ Reference:https://wiki.linuxfoundation.org/networking/netem.
 
 import logging
 import contextlib
+from teuthology import misc as teuthology
+from cStringIO import StringIO
+from teuthology.orchestra import run
+from teuthology.orchestra import remote as orchestra_remote
+from teuthology import contextutil
 from paramiko import SSHException
 import socket
 import time
@@ -58,8 +63,8 @@ def static_delay(remote, host, interface, delay):
 
     ip = socket.gethostbyname(host.hostname)
 
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') == -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') == -1:
         # call set_priority() func to create priority queue
         # if not already created(indicated by -1)
         log.info('Create priority queue')
@@ -74,11 +79,13 @@ def static_delay(remote, host, interface, delay):
         log.info('Delay set on %s' % remote)
         set_ip.extend(['%s' % ip, 'flowid', '2:1'])
         remote.run(args=set_ip)
+        remote.run(args=show_tc(interface))
     else:
         # if the device is already created, only change the delay
         log.info('Setting delay to %s' % delay)
         change_delay.extend(['%s' % delay, '5ms', 'distribution', 'normal'])
         remote.run(args=change_delay)
+        remote.run(args=show_tc(interface))
 
 
 def variable_delay(remote, host, interface, delay_range=[]):
@@ -93,8 +100,8 @@ def variable_delay(remote, host, interface, delay_range=[]):
     delay1 = delay_range[0]
     delay2 = delay_range[1]
 
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') == -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') == -1:
         # call set_priority() func to create priority queue
         # if not already created(indicated by -1)
         remote.run(args=set_priority(interface))
@@ -120,8 +127,8 @@ def delete_dev(remote, interface):
     """ Delete the qdisc if present"""
 
     log.info('Delete tc')
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') != -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') != -1:
         remote.run(args=del_tc(interface))
 
 
@@ -129,8 +136,7 @@ class Toggle:
 
     stop_event = gevent.event.Event()
 
-    def __init__(self, ctx, remote, host, interface, interval):
-        self.ctx = ctx
+    def __init__(self, remote, host, interface, interval):
         self.remote = remote
         self.host = host
         self.interval = interval
@@ -143,8 +149,8 @@ class Toggle:
 
         _, _, set_ip = cmd_prefix(self.interface)
 
-        tc = self.remote.sh(show_tc(self.interface))
-        if tc.strip().find('refcnt') == -1:
+        r = self.remote.run(args=show_tc(self.interface), stdout=StringIO())
+        if r.stdout.getvalue().strip().find('refcnt') == -1:
             self.remote.run(args=set_priority(self.interface))
             # packet drop to specific ip
             log.info('Drop all packets to %s' % self.host)
@@ -153,42 +159,30 @@ class Toggle:
 
     def link_toggle(self):
 
-        """
-         For toggling packet drop and recovery in regular interval.
-         If interval is 5s, link is up for 5s and link is down for 5s
-        """
+      # For toggling packet drop and recovery in regular interval.
+      # If interval is 5s, link is up for 5s and link is down for 5s
 
-        while not self.stop_event.is_set():
-            self.stop_event.wait(timeout=self.interval)
-            # simulate link down
-            try:
-                self.packet_drop()
-                log.info('link down')
-            except SSHException:
-                log.debug('Failed to run command')
+      while not self.stop_event.is_set():
+        self.stop_event.wait(timeout=self.interval)
+        # simulate link down
+        try:
+            self.packet_drop()
+            log.info('link down')
+        except SSHException as e:
+            log.debug('Failed to run command')
 
-            self.stop_event.wait(timeout=self.interval)
-            # if qdisc exist,delete it.
-            try:
-                delete_dev(self.remote, self.interface)
-                log.info('link up')
-            except SSHException:
-                log.debug('Failed to run command')
+        self.stop_event.wait(timeout=self.interval)
+        # if qdisc exist,delete it.
+        try:
+            delete_dev(self.remote, self.interface)
+            log.info('link up')
+        except SSHException as e:
+            log.debug('Failed to run command')
 
-    def begin(self, gname):
+    def begin(self):
         self.thread = gevent.spawn(self.link_toggle)
-        self.ctx.netem.names[gname] = self.thread
 
-    def end(self, gname):
-        self.stop_event.set()
-        log.info('gname is {}'.format(self.ctx.netem.names[gname]))
-        self.ctx.netem.names[gname].get()
-
-    def cleanup(self):
-        """
-        Invoked during unwinding if the test fails or exits before executing task 'link_recover'
-        """
-        log.info('Clean up')
+    def end(self):
         self.stop_event.set()
         self.thread.get()
 
@@ -212,7 +206,6 @@ def task(ctx, config):
     - netem:
           clients: [rgw.1, mon.0]
           iface: eno1
-          gname: t1
           dst_client: [c2.rgw.1]
           link_toggle_interval: 10 # no unit mentioned. By default takes seconds.
 
@@ -230,14 +223,13 @@ def task(ctx, config):
         "please list clients to run on"
     if not hasattr(ctx, 'netem'):
         ctx.netem = argparse.Namespace()
-        ctx.netem.names = {}
 
     if config.get('dst_client') is not None:
         dst = config.get('dst_client')
-        (host,) = ctx.cluster.only(dst).remotes.keys()
+        (host,) = ctx.cluster.only(dst).remotes.iterkeys()
 
     for role in config.get('clients', None):
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
         ctx.netem.remote = remote
         if config.get('delay', False):
             static_delay(remote, host, config.get('iface'), config.get('delay'))
@@ -246,23 +238,24 @@ def task(ctx, config):
         if config.get('link_toggle_interval', False):
             log.info('Toggling link for %s' % config.get('link_toggle_interval'))
             global toggle
-            toggle = Toggle(ctx, remote, host, config.get('iface'), config.get('link_toggle_interval'))
-            toggle.begin(config.get('gname'))
+            toggle = Toggle(remote, host, config.get('iface'), config.get('link_toggle_interval'))
+            ctx.netem.toggle = toggle
+            toggle.begin()
         if config.get('link_recover', False):
             log.info('Recovering link')
-            for gname in config.get('link_recover'):
-                toggle.end(gname)
-                log.info('sleeping')
-                time.sleep(config.get('link_toggle_interval'))
-                delete_dev(ctx.netem.remote, config.get('iface'))
-                del ctx.netem.names[gname]
+            toggle.end()
+            log.info('sleeping')
+            time.sleep(config.get('link_toggle_interval'))
+            delete_dev(ctx.netem.remote, config.get('iface'))
 
     try:
         yield
     finally:
-        if ctx.netem.names:
-            toggle.cleanup()
+        if ctx.config.get('link_toggle_interval') and not ctx.config.get('link_recover'):
+            # Ends toggle only if 'link_recover' has not been run before.
+            log.info('Ending toggle')
+            ctx.netem.toggle.end()
         for role in config.get('clients'):
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = ctx.cluster.only(role).remotes.iterkeys()
             delete_dev(remote, config.get('iface'))
 

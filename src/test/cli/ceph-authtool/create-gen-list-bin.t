@@ -1,4 +1,4 @@
-  $ ceph-authtool kring --create-keyring --mode 0600
+  $ ceph-authtool kring --create-keyring
   creating kring
 
   $ ceph-authtool kring --list
@@ -14,3 +14,4 @@
   $ ceph-authtool kring -l
   [client.admin]
   \\tkey = [a-zA-Z0-9+/]+=* \(esc\) (re)
+

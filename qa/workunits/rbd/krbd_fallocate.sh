@@ -1,9 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
+# This documents the state of things as of 4.12-rc4.
+#
 # - fallocate -z deallocates because BLKDEV_ZERO_NOUNMAP hint is ignored by
 # krbd
 #
-# - big unaligned blkdiscard and fallocate -z/-p leave the objects in place
+# - unaligned fallocate -z/-p appear to not deallocate -- see caveat #2 in
+# linux.git commit 6ac56951dc10 ("rbd: implement REQ_OP_WRITE_ZEROES")
 
 set -ex
 
@@ -11,7 +14,7 @@ set -ex
 function py_blkdiscard() {
     local offset=$1
 
-    python3 <<EOF
+    python <<EOF
 import fcntl, struct
 BLKDISCARD = 0x1277
 with open('$DEV', 'w') as dev:
@@ -24,7 +27,7 @@ function py_fallocate() {
     local mode=$1
     local offset=$2
 
-    python3 <<EOF
+    python <<EOF
 import os, ctypes, ctypes.util
 FALLOC_FL_KEEP_SIZE = 0x01
 FALLOC_FL_PUNCH_HOLE = 0x02
@@ -39,10 +42,6 @@ EOF
 
 function allocate() {
     xfs_io -c "pwrite -b $OBJECT_SIZE -W 0 $IMAGE_SIZE" $DEV
-    assert_allocated
-}
-
-function assert_allocated() {
     cmp <(od -xAx $DEV) - <<EOF
 000000 cdcd cdcd cdcd cdcd cdcd cdcd cdcd cdcd
 *
@@ -51,18 +50,16 @@ EOF
     [[ $(rados -p rbd ls | grep -c rbd_data.$IMAGE_ID) -eq $NUM_OBJECTS ]]
 }
 
-function assert_zeroes() {
-    local num_objects_expected=$1
-
+function assert_deallocated() {
     cmp <(od -xAx $DEV) - <<EOF
 000000 0000 0000 0000 0000 0000 0000 0000 0000
 *
 $(printf %x $IMAGE_SIZE)
 EOF
-    [[ $(rados -p rbd ls | grep -c rbd_data.$IMAGE_ID) -eq $num_objects_expected ]]
+    [[ $(rados -p rbd ls | grep -c rbd_data.$IMAGE_ID) -eq 0 ]]
 }
 
-function assert_zeroes_unaligned() {
+function assert_deallocated_unaligned() {
     local num_objects_expected=$1
 
     cmp <(od -xAx $DEV) - <<EOF
@@ -74,7 +71,7 @@ $(printf %x $IMAGE_SIZE)
 EOF
     [[ $(rados -p rbd ls | grep -c rbd_data.$IMAGE_ID) -eq $num_objects_expected ]]
     for ((i = 0; i < $num_objects_expected; i++)); do
-        rados -p rbd stat rbd_data.$IMAGE_ID.$(printf %016x $i) | egrep "(size $((OBJECT_SIZE / 2)))|(size 0)"
+        rados -p rbd stat rbd_data.$IMAGE_ID.$(printf %016x $i) | grep "size $((OBJECT_SIZE / 2))"
     done
 }
 
@@ -82,69 +79,45 @@ IMAGE_NAME="fallocate-test"
 
 rbd create --size 200 $IMAGE_NAME
 
-IMAGE_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print(json.load(sys.stdin)["size"])')
-OBJECT_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print(json.load(sys.stdin)["object_size"])')
+IMAGE_SIZE=$(rbd info --format=json $IMAGE_NAME | python -c 'import sys, json; print json.load(sys.stdin)["size"]')
+OBJECT_SIZE=$(rbd info --format=json $IMAGE_NAME | python -c 'import sys, json; print json.load(sys.stdin)["object_size"]')
 NUM_OBJECTS=$((IMAGE_SIZE / OBJECT_SIZE))
 [[ $((IMAGE_SIZE % OBJECT_SIZE)) -eq 0 ]]
 
 IMAGE_ID="$(rbd info --format=json $IMAGE_NAME |
-    python3 -c "import sys, json; print(json.load(sys.stdin)['block_name_prefix'].split('.')[1])")"
+    python -c "import sys, json; print json.load(sys.stdin)['block_name_prefix'].split('.')[1]")"
 
 DEV=$(sudo rbd map $IMAGE_NAME)
-
-# make sure -ENOENT is hidden
-assert_zeroes 0
-py_blkdiscard 0
-assert_zeroes 0
 
 # blkdev_issue_discard
 allocate
 py_blkdiscard 0
-assert_zeroes 0
+assert_deallocated
 
 # blkdev_issue_zeroout w/ BLKDEV_ZERO_NOUNMAP
 allocate
 py_fallocate FALLOC_FL_ZERO_RANGE\|FALLOC_FL_KEEP_SIZE 0
-assert_zeroes 0
+assert_deallocated
 
 # blkdev_issue_zeroout w/ BLKDEV_ZERO_NOFALLBACK
 allocate
 py_fallocate FALLOC_FL_PUNCH_HOLE\|FALLOC_FL_KEEP_SIZE 0
-assert_zeroes 0
+assert_deallocated
 
 # unaligned blkdev_issue_discard
 allocate
 py_blkdiscard $((OBJECT_SIZE / 2))
-assert_zeroes_unaligned $NUM_OBJECTS
+assert_deallocated_unaligned 1
 
 # unaligned blkdev_issue_zeroout w/ BLKDEV_ZERO_NOUNMAP
 allocate
 py_fallocate FALLOC_FL_ZERO_RANGE\|FALLOC_FL_KEEP_SIZE $((OBJECT_SIZE / 2))
-assert_zeroes_unaligned $NUM_OBJECTS
+assert_deallocated_unaligned $NUM_OBJECTS
 
 # unaligned blkdev_issue_zeroout w/ BLKDEV_ZERO_NOFALLBACK
 allocate
 py_fallocate FALLOC_FL_PUNCH_HOLE\|FALLOC_FL_KEEP_SIZE $((OBJECT_SIZE / 2))
-assert_zeroes_unaligned $NUM_OBJECTS
-
-sudo rbd unmap $DEV
-
-DEV=$(sudo rbd map -o notrim $IMAGE_NAME)
-
-# blkdev_issue_discard
-allocate
-py_blkdiscard 0 |& grep 'Operation not supported'
-assert_allocated
-
-# blkdev_issue_zeroout w/ BLKDEV_ZERO_NOUNMAP
-allocate
-py_fallocate FALLOC_FL_ZERO_RANGE\|FALLOC_FL_KEEP_SIZE 0
-assert_zeroes $NUM_OBJECTS
-
-# blkdev_issue_zeroout w/ BLKDEV_ZERO_NOFALLBACK
-allocate
-py_fallocate FALLOC_FL_PUNCH_HOLE\|FALLOC_FL_KEEP_SIZE 0 |& grep 'Operation not supported'
-assert_allocated
+assert_deallocated_unaligned $NUM_OBJECTS
 
 sudo rbd unmap $DEV
 

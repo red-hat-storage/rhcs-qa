@@ -1,7 +1,10 @@
+
 overrides:
   ceph:
-    log-whitelist:
-      - MON_DOWN
+    conf:
+      global:
+        ms type: simple
+
 tasks:
   - cephfs_test_runner:
       fail_on_skip: false

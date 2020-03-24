@@ -12,15 +12,13 @@ openstack:
 tasks:
 - install:
 - ceph:
-    pre-mgr-commands:
-      - sudo ceph config set mgr mgr/devicehealth/enable_monitoring false --force
     log-whitelist:
       - but it is still running
       - slow request
       - overall HEALTH_
-      - \(OSDMAP_FLAGS\)
-      - \(OSD_
-      - \(PG_
+      - (OSDMAP_FLAGS)
+      - (OSD_
+      - (PG_
 - exec:
     client.0:
       - sudo ceph osd pool create foo 128 128

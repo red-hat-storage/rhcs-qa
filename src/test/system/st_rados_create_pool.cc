@@ -117,15 +117,15 @@ out:
 
 std::string get_temp_pool_name(const char* prefix)
 {
-  ceph_assert(prefix);
+  assert(prefix);
   char hostname[80];
   int ret = 0;
   ret = gethostname(hostname, sizeof(hostname));
-  ceph_assert(!ret);
+  assert(!ret);
   char poolname[256];
   ret = snprintf(poolname, sizeof(poolname),
                  "%s.%s-%d", prefix, hostname, getpid());
-  ceph_assert(ret > 0);
-  ceph_assert((unsigned int)ret < sizeof(poolname));
+  assert(ret > 0);
+  assert((unsigned int)ret < sizeof(poolname));
   return poolname;
 }

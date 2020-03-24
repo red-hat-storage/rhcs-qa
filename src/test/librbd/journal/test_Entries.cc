@@ -23,25 +23,30 @@ public:
   typedef std::list<journal::Journaler *> Journalers;
 
   struct ReplayHandler : public journal::ReplayHandler {
-    ceph::mutex lock = ceph::make_mutex("ReplayHandler::lock");
-    ceph::condition_variable cond;
+    Mutex lock;
+    Cond cond;
     bool entries_available;
     bool complete;
 
     ReplayHandler()
-      : entries_available(false), complete(false) {
+      : lock("ReplayHandler::lock"), entries_available(false), complete(false) {
+    }
+
+    void get() override {
+    }
+    void put() override {
     }
 
     void handle_entries_available() override  {
-      std::lock_guard locker{lock};
+      Mutex::Locker locker(lock);
       entries_available = true;
-      cond.notify_all();
+      cond.Signal();
     }
 
     void handle_complete(int r) override {
-      std::lock_guard locker{lock};
+      Mutex::Locker locker(lock);
       complete = true;
-      cond.notify_all();
+      cond.Signal();
     }
   };
 
@@ -62,7 +67,7 @@ public:
 
   journal::Journaler *create_journaler(librbd::ImageCtx *ictx) {
     journal::Journaler *journaler = new journal::Journaler(
-      ictx->md_ctx, ictx->id, "dummy client", {}, nullptr);
+      ictx->md_ctx, ictx->id, "dummy client", {});
 
     int r = journaler->register_client(bufferlist());
     if (r < 0) {
@@ -86,9 +91,10 @@ public:
   }
 
   bool wait_for_entries_available(librbd::ImageCtx *ictx) {
-    std::unique_lock locker{m_replay_handler.lock};
+    Mutex::Locker locker(m_replay_handler.lock);
     while (!m_replay_handler.entries_available) {
-      if (m_replay_handler.cond.wait_for(locker, 10s) == std::cv_status::timeout) {
+      if (m_replay_handler.cond.WaitInterval(m_replay_handler.lock,
+					     utime_t(10, 0)) != 0) {
 	return false;
       }
     }
@@ -100,8 +106,8 @@ public:
                        librbd::journal::EventEntry *event_entry) {
     try {
       bufferlist data_bl = replay_entry.get_data();
-      auto it = data_bl.cbegin();
-      decode(*event_entry, it);
+      bufferlist::iterator it = data_bl.begin();
+      ::decode(*event_entry, it);
     } catch (const buffer::error &err) {
       return false;
     }
@@ -158,7 +164,7 @@ TEST_F(TestJournalEntries, AioDiscard) {
   REQUIRE_FEATURE(RBD_FEATURE_JOURNALING);
 
   CephContext* cct = reinterpret_cast<CephContext*>(_rados.cct());
-  REQUIRE(!cct->_conf.get_val<bool>("rbd_skip_partial_discard"));
+  REQUIRE(!cct->_conf->rbd_skip_partial_discard);
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
@@ -169,8 +175,7 @@ TEST_F(TestJournalEntries, AioDiscard) {
   C_SaferCond cond_ctx;
   auto c = librbd::io::AioCompletion::create(&cond_ctx);
   c->get();
-  ictx->io_work_queue->aio_discard(c, 123, 234,
-                                   ictx->discard_granularity_bytes);
+  ictx->io_work_queue->aio_discard(c, 123, 234, cct->_conf->rbd_skip_partial_discard);
   ASSERT_EQ(0, c->wait_for_complete());
   c->put();
 

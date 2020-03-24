@@ -13,8 +13,7 @@ const string dir("rocksdb.test_temp_dir");
 TEST(RocksDBOption, simple) {
   rocksdb::Options options;
   rocksdb::Status status;
-  map<string,string> kvoptions;
-  RocksDBStore *db = new RocksDBStore(g_ceph_context, dir, kvoptions, NULL);
+  RocksDBStore *db = new RocksDBStore(g_ceph_context, dir, NULL);
   string options_string = ""
 			  "write_buffer_size=536870912;"
 			  "create_if_missing=true;"
@@ -43,8 +42,7 @@ TEST(RocksDBOption, simple) {
 TEST(RocksDBOption, interpret) {
   rocksdb::Options options;
   rocksdb::Status status;
-  map<string,string> kvoptions;
-  RocksDBStore *db = new RocksDBStore(g_ceph_context, dir, kvoptions, NULL);
+  RocksDBStore *db = new RocksDBStore(g_ceph_context, dir, NULL);
   string options_string = "compact_on_mount = true; compaction_threads=10;flusher_threads=5;";
   
   int r = db->ParseOptionsFromString(options_string, options);

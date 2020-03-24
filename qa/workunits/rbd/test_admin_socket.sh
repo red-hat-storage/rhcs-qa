@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -ex
+#!/bin/bash -ex
 
 TMPDIR=/tmp/rbd_test_admin_socket$$
 mkdir $TMPDIR
@@ -112,6 +111,8 @@ function rbd_watch_end()
     rm -f $(rbd_watch_fifo ${image}) $(rbd_watch_pid_file ${image}) \
        $(rbd_watch_out_file ${image}) $(rbd_watch_asok ${image})
 }
+
+wait_for_clean
 
 pool="rbd"
 image=testimg$$

@@ -1,8 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -ex
-
-export RBD_FORCE_ALLOW_V1=1
 
 function fill_image() {
     local spec=$1
@@ -63,8 +61,7 @@ function mkfs_and_mount() {
 
     local dev
     dev=$(sudo rbd map $spec)
-    blkdiscard $dev
-    mkfs.ext4 -q -E nodiscard $dev
+    mkfs.ext4 -q -E discard $dev
     sudo mount $dev /mnt
     sudo umount /mnt
     sudo rbd unmap $dev
@@ -98,7 +95,7 @@ function get_num_clones() {
     local pool=$1
 
     rados -p $pool --format=json df |
-        python3 -c 'import sys, json; print(json.load(sys.stdin)["pools"][0]["num_object_clones"])'
+        python -c 'import sys, json; print json.load(sys.stdin)["pools"][0]["num_object_clones"]'
 }
 
 ceph osd pool create repdata 24 24
@@ -119,8 +116,8 @@ for pool in rbd rbdnonzero; do
     rbd create --size 200 --data-pool ecdata $pool/img3
 done
 
-IMAGE_SIZE=$(rbd info --format=json img1 | python3 -c 'import sys, json; print(json.load(sys.stdin)["size"])')
-OBJECT_SIZE=$(rbd info --format=json img1 | python3 -c 'import sys, json; print(json.load(sys.stdin)["object_size"])')
+IMAGE_SIZE=$(rbd info --format=json img1 | python -c 'import sys, json; print json.load(sys.stdin)["size"]')
+OBJECT_SIZE=$(rbd info --format=json img1 | python -c 'import sys, json; print json.load(sys.stdin)["object_size"]')
 NUM_OBJECTS=$((IMAGE_SIZE / OBJECT_SIZE))
 [[ $((IMAGE_SIZE % OBJECT_SIZE)) -eq 0 ]]
 
@@ -190,7 +187,7 @@ for pool in rbd rbdnonzero; do
     done
 done
 
-# mkfs_and_mount should discard some objects everywhere but in clonesonly
+# mkfs should discard some objects everywhere but in clonesonly
 [[ $(list_HEADs rbd | wc -l) -lt $((NUM_META_RBDS + 5 * NUM_OBJECTS)) ]]
 [[ $(list_HEADs repdata | wc -l) -lt $((1 + 14 * NUM_OBJECTS)) ]]
 [[ $(list_HEADs ecdata | wc -l) -lt $((1 + 14 * NUM_OBJECTS)) ]]

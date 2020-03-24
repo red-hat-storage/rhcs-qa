@@ -32,10 +32,10 @@ void TestMemRadosClient::object_list(int64_t pool_id,
 
   auto pool = m_mem_cluster->get_pool(pool_id);
   if (pool != nullptr) {
-    std::shared_lock file_locker{pool->file_lock};
+    RWLock::RLocker file_locker(pool->file_lock);
     for (auto &file_pair : pool->files) {
       Object obj;
-      obj.oid = file_pair.first.name;
+      obj.oid = file_pair.first;
       list->push_back(obj);
     }
   }
@@ -105,14 +105,12 @@ int TestMemRadosClient::blacklist_add(const std::string& client_address,
   return 0;
 }
 
-void TestMemRadosClient::transaction_start(const std::string& nspace,
-                                           const std::string &oid) {
-  m_mem_cluster->transaction_start({nspace, oid});
+void TestMemRadosClient::transaction_start(const std::string &oid) {
+  m_mem_cluster->transaction_start(oid);
 }
 
-void TestMemRadosClient::transaction_finish(const std::string& nspace,
-                                            const std::string &oid) {
-  m_mem_cluster->transaction_finish({nspace, oid});
+void TestMemRadosClient::transaction_finish(const std::string &oid) {
+  m_mem_cluster->transaction_finish(oid);
 }
 
 } // namespace librados

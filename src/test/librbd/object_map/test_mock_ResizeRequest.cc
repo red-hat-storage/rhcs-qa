@@ -7,7 +7,6 @@
 #include "common/bit_vector.hpp"
 #include "librbd/internal.h"
 #include "librbd/ObjectMap.h"
-#include "librbd/api/Image.h"
 #include "librbd/object_map/ResizeRequest.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -55,14 +54,13 @@ TEST_F(TestMockObjectMapResizeRequest, UpdateInMemory) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
   ASSERT_EQ(0, acquire_exclusive_lock(*ictx));
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   object_map.resize(1);
 
   C_SaferCond cond_ctx;
   AsyncRequest<> *req = new ResizeRequest(
-    *ictx, &object_map_lock, &object_map, CEPH_NOSNAP, object_map.size(),
-    OBJECT_EXISTS, &cond_ctx);
+    *ictx, &object_map, CEPH_NOSNAP, object_map.size(), OBJECT_EXISTS,
+    &cond_ctx);
   req->send();
   ASSERT_EQ(0, cond_ctx.wait());
 
@@ -81,14 +79,13 @@ TEST_F(TestMockObjectMapResizeRequest, UpdateHeadOnDisk) {
 
   expect_resize(ictx, CEPH_NOSNAP, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   object_map.resize(1);
 
   C_SaferCond cond_ctx;
   AsyncRequest<> *req = new ResizeRequest(
-    *ictx, &object_map_lock, &object_map, CEPH_NOSNAP, object_map.size(),
-    OBJECT_EXISTS, &cond_ctx);
+    *ictx, &object_map, CEPH_NOSNAP, object_map.size(), OBJECT_EXISTS,
+    &cond_ctx);
   req->send();
   ASSERT_EQ(0, cond_ctx.wait());
 
@@ -101,21 +98,20 @@ TEST_F(TestMockObjectMapResizeRequest, UpdateSnapOnDisk) {
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
   ASSERT_EQ(0, snap_create(*ictx, "snap1"));
-  ASSERT_EQ(0, librbd::api::Image<>::snap_set(ictx,
-				              cls::rbd::UserSnapshotNamespace(),
-				              "snap1"));
+  ASSERT_EQ(0, librbd::snap_set(ictx,
+				cls::rbd::UserSnapshotNamespace(),
+				"snap1"));
 
   uint64_t snap_id = ictx->snap_id;
   expect_resize(ictx, snap_id, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   object_map.resize(1);
 
   C_SaferCond cond_ctx;
   AsyncRequest<> *req = new ResizeRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, object_map.size(),
-    OBJECT_EXISTS, &cond_ctx);
+    *ictx, &object_map, snap_id, object_map.size(), OBJECT_EXISTS,
+    &cond_ctx);
   req->send();
   ASSERT_EQ(0, cond_ctx.wait());
 
@@ -132,14 +128,13 @@ TEST_F(TestMockObjectMapResizeRequest, UpdateOnDiskError) {
   expect_resize(ictx, CEPH_NOSNAP, -EINVAL);
   expect_invalidate(ictx);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   object_map.resize(1);
 
   C_SaferCond cond_ctx;
   AsyncRequest<> *req = new ResizeRequest(
-    *ictx, &object_map_lock, &object_map, CEPH_NOSNAP, object_map.size(),
-    OBJECT_EXISTS, &cond_ctx);
+    *ictx, &object_map, CEPH_NOSNAP, object_map.size(), OBJECT_EXISTS,
+    &cond_ctx);
   req->send();
   ASSERT_EQ(0, cond_ctx.wait());
 

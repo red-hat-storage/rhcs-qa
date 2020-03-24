@@ -1,6 +1,6 @@
 A command taking no args:
 
-  $ rbd device list junk
+  $ rbd showmapped junk
   rbd: too many arguments
   [1]
 

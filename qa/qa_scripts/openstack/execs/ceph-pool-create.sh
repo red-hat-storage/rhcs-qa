@@ -1,6 +1,4 @@
-#!/usr/bin/env bash
-set -f
-
+#!/bin/bash -f
 #
 # On the ceph site, make the pools required for Openstack
 #

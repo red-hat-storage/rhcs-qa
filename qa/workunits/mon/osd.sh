@@ -5,7 +5,7 @@ set -e
 ua=`uuidgen`
 ub=`uuidgen`
 
-# should get same id with same uuid
+# shoudl get same id with same uuid
 na=`ceph osd create $ua`
 test $na -eq `ceph osd create $ua`
 

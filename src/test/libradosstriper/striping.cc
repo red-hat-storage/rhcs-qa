@@ -8,6 +8,7 @@
 #include "include/radosstriper/libradosstriper.h"
 #include "include/radosstriper/libradosstriper.hpp"
 #include "include/ceph_fs.h"
+#include "common/backport14.h"
 #include "test/librados/test.h"
 #include "test/libradosstriper/TestCase.h"
 
@@ -170,7 +171,7 @@ TEST_P(StriperTestRT, StripedRoundtrip) {
   bufferlist bl1;
   {
     SCOPED_TRACE("Writing initial object"); 
-    buf1 = std::make_unique<char[]>(testData.size);
+    buf1 = ceph::make_unique<char[]>(testData.size);
     for (unsigned int i = 0; i < testData.size; i++) buf1[i] = 13*((unsigned char)i);
     bl1.append(buf1.get(), testData.size);
     ASSERT_EQ(0, striper.write(soid, bl1, testData.size, 0));
@@ -184,7 +185,7 @@ TEST_P(StriperTestRT, StripedRoundtrip) {
   bufferlist bl2;
   {
     SCOPED_TRACE("Testing append");
-    buf2 = std::make_unique<char[]>(testData.size);
+    buf2 = ceph::make_unique<char[]>(testData.size);
     for (unsigned int i = 0; i < testData.size; i++) buf2[i] = 17*((unsigned char)i);
     bl2.append(buf2.get(), testData.size);
     ASSERT_EQ(0, striper.append(soid, bl2, testData.size));
@@ -324,6 +325,6 @@ const TestData simple_stripe_schemes[] = {
   {CEPH_MIN_STRIPE_UNIT, 50,           3*CEPH_MIN_STRIPE_UNIT, 45*CEPH_MIN_STRIPE_UNIT+100}
 };
 
-INSTANTIATE_TEST_SUITE_P(SimpleStriping,
+INSTANTIATE_TEST_CASE_P(SimpleStriping,
                         StriperTestRT,
                         ::testing::ValuesIn(simple_stripe_schemes));

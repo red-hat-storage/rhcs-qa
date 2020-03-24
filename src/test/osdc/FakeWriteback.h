@@ -11,10 +11,11 @@
 #include <atomic>
 
 class Finisher;
+class Mutex;
 
 class FakeWriteback : public WritebackHandler {
 public:
-  FakeWriteback(CephContext *cct, ceph::mutex *lock, uint64_t delay_ns);
+  FakeWriteback(CephContext *cct, Mutex *lock, uint64_t delay_ns);
   ~FakeWriteback() override;
 
   void read(const object_t& oid, uint64_t object_no,
@@ -38,7 +39,7 @@ public:
 				 snapid_t) override;
 private:
   CephContext *m_cct;
-  ceph::mutex *m_lock;
+  Mutex *m_lock;
   uint64_t m_delay_ns;
   std::atomic<unsigned> m_tid = { 0 };
   Finisher *m_finisher;

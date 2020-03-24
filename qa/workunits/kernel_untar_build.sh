@@ -1,12 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -e
 
-wget -O linux.tar.gz http://download.ceph.com/qa/linux-5.4.tar.gz
+wget -q http://download.ceph.com/qa/linux-4.0.5.tar.xz
 
 mkdir t
 cd t
-tar xzf ../linux.tar.gz
+tar Jxvf ../linux*.xz
 cd linux*
 make defconfig
 make -j`grep -c processor /proc/cpuinfo`

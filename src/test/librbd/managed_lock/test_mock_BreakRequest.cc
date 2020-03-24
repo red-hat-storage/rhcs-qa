@@ -35,7 +35,7 @@ struct GetLockerRequest<librbd::MockTestImageCtx> {
   static GetLockerRequest* create(librados::IoCtx& ioctx,
                                   const std::string& oid, bool exclusive,
                                   Locker *locker, Context *on_finish) {
-    ceph_assert(s_instance != nullptr);
+    assert(s_instance != nullptr);
     s_instance->locker = locker;
     s_instance->on_finish = on_finish;
     return s_instance;
@@ -81,9 +81,7 @@ public:
       expect.WillOnce(Return(r));
     } else {
       obj_watch_t watcher;
-      strncpy(watcher.addr, (address + ":0/0").c_str(), sizeof(watcher.addr) - 1);
-      watcher.addr[sizeof(watcher.addr) - 1] = '\0';
-      watcher.watcher_id = 0;
+      strcpy(watcher.addr, (address + ":0/0").c_str());
       watcher.cookie = watch_handle;
 
       std::list<obj_watch_t> watchers;

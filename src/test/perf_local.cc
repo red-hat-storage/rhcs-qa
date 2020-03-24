@@ -44,11 +44,11 @@
 #include "include/buffer.h"
 #include "include/encoding.h"
 #include "include/ceph_hash.h"
-#include "include/spinlock.h"
+#include "include/Spinlock.h"
 #include "common/ceph_argparse.h"
 #include "common/Cycles.h"
 #include "common/Cond.h"
-#include "common/ceph_mutex.h"
+#include "common/Mutex.h"
 #include "common/Thread.h"
 #include "common/Timer.h"
 #include "msg/async/Event.h"
@@ -159,11 +159,11 @@ double atomic_int_set()
 double mutex_nonblock()
 {
   int count = 1000000;
-  ceph::mutex m = ceph::make_mutex("mutex_nonblock::m");
+  Mutex m("mutex_nonblock::m");
   uint64_t start = Cycles::rdtsc();
   for (int i = 0; i < count; i++) {
-    m.lock();
-    m.unlock();
+    m.Lock();
+    m.Unlock();
   }
   uint64_t stop = Cycles::rdtsc();
   return Cycles::to_seconds(stop - start)/count;
@@ -188,18 +188,18 @@ struct DummyBlock {
   int a = 1, b = 2, c = 3, d = 4;
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
-    encode(a, bl);
-    encode(b, bl);
-    encode(c, bl);
-    encode(d, bl);
+    ::encode(a, bl);
+    ::encode(b, bl);
+    ::encode(c, bl);
+    ::encode(d, bl);
     ENCODE_FINISH(bl);
   }
-  void decode(bufferlist::const_iterator &bl) {
+  void decode(bufferlist::iterator &bl) {
     DECODE_START(1, bl);
-    decode(a, bl);
-    decode(b, bl);
-    decode(c, bl);
-    decode(d, bl);
+    ::decode(a, bl);
+    ::decode(b, bl);
+    ::decode(c, bl);
+    ::decode(d, bl);
     DECODE_FINISH(bl);
   }
 };
@@ -214,9 +214,9 @@ double buffer_encode_decode()
   for (int i = 0; i < count; i++) {
     bufferlist b;
     DummyBlock dummy_block;
-    encode(dummy_block, b);
-    auto iter = b.cbegin();
-    decode(dummy_block, iter);
+    ::encode(dummy_block, b);
+    bufferlist::iterator iter = b.begin();
+    ::decode(dummy_block, iter);
   }
   uint64_t stop = Cycles::rdtsc();
   return Cycles::to_seconds(stop - start)/count;
@@ -246,7 +246,7 @@ double buffer_copy()
   char copy[10];
   uint64_t start = Cycles::rdtsc();
   for (int i = 0; i < count; i++) {
-    b.cbegin(2).copy(6, copy);
+    b.copy(2, 6, copy);
   }
   uint64_t stop = Cycles::rdtsc();
   return Cycles::to_seconds(stop - start)/count;
@@ -261,21 +261,37 @@ double buffer_encode()
   for (int i = 0; i < count; i++) {
     bufferlist b;
     DummyBlock dummy_block;
-    encode(dummy_block, b);
+    ::encode(dummy_block, b);
     uint64_t start = Cycles::rdtsc();
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
-    encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
+    ::encode(dummy_block, b);
     total += Cycles::rdtsc() - start;
   }
   return Cycles::to_seconds(total)/(count*10);
+}
+
+// Measure the cost of retrieving an object from the beginning of a buffer.
+double buffer_get_contiguous()
+{
+  int count = 1000000;
+  int value = 11;
+  bufferlist b;
+  b.append((char*)&value, sizeof(value));
+  int sum = 0;
+  uint64_t start = Cycles::rdtsc();
+  for (int i = 0; i < count; i++) {
+    sum += *reinterpret_cast<int*>(b.get_contiguous(0, sizeof(value)));
+  }
+  uint64_t stop = Cycles::rdtsc();
+  return Cycles::to_seconds(stop - start)/count;
 }
 
 // Measure the cost of creating an iterator and iterating over 10
@@ -292,7 +308,7 @@ double buffer_iterator()
   int sum = 0;
   uint64_t start = Cycles::rdtsc();
   for (int i = 0; i < count; i++) {
-    auto it = b.cbegin();
+    bufferlist::iterator it = b.begin();
     while (!it.end()) {
       sum += (static_cast<const char*>(it.get_current_ptr().c_str()))[it.get_remaining()-1];
       ++it;
@@ -305,11 +321,11 @@ double buffer_iterator()
 
 // Implements the CondPingPong test.
 class CondPingPong {
-  ceph::mutex mutex = ceph::make_mutex("CondPingPong::mutex");
-  ceph::condition_variable cond;
-  int prod = 0;
-  int cons = 0;
-  const int count = 10000;
+  Mutex mutex;
+  Cond cond;
+  int prod;
+  int cons;
+  const int count;
 
   class Consumer : public Thread {
     CondPingPong *p;
@@ -322,7 +338,7 @@ class CondPingPong {
   } consumer;
 
  public:
-  CondPingPong(): consumer(this) {}
+  CondPingPong(): mutex("CondPingPong::mutex"), prod(0), cons(0), count(10000), consumer(this) {}
 
   double run() {
     consumer.create("consumer");
@@ -334,20 +350,22 @@ class CondPingPong {
   }
 
   void produce() {
-    std::unique_lock l{mutex};
+    Mutex::Locker l(mutex);
     while (cons < count) {
-      cond.wait(l, [this] { return cons >= prod; });
+      while (cons < prod)
+        cond.Wait(mutex);
       ++prod;
-      cond.notify_all();
+      cond.Signal();
     }
   }
 
   void consume() {
-    std::unique_lock l{mutex};
+    Mutex::Locker l(mutex);
     while (cons < count) {
-      cond.wait(l, [this] { return cons != prod; });
+      while (cons == prod)
+        cond.Wait(mutex);
       ++cons;
-      cond.notify_all();
+      cond.Signal();
     }
   }
 };
@@ -470,7 +488,7 @@ class CountEvent: public EventCallback {
 
  public:
   explicit CountEvent(std::atomic<int64_t> *atomic): count(atomic) {}
-  void do_request(uint64_t id) override {
+  void do_request(int id) override {
     (*count)--;
   }
 };
@@ -619,10 +637,11 @@ double perf_prefetch()
   uint64_t total_ticks = 0;
   int count = 10;
   char buf[16 * 64];
+  uint64_t start, stop;
 
   for (int i = 0; i < count; i++) {
     PerfHelper::flush_cache();
-    uint64_t start = Cycles::rdtsc();
+    start = Cycles::rdtsc();
     prefetch(&buf[576], 64);
     prefetch(&buf[0],   64);
     prefetch(&buf[512], 64);
@@ -639,7 +658,7 @@ double perf_prefetch()
     prefetch(&buf[832], 64);
     prefetch(&buf[64],  64);
     prefetch(&buf[192], 64);
-    uint64_t stop = Cycles::rdtsc();
+    stop = Cycles::rdtsc();
     total_ticks += stop - start;
   }
   return Cycles::to_seconds(total_ticks) / count / 16;
@@ -718,7 +737,7 @@ double sfence()
 double test_spinlock()
 {
   int count = 1000000;
-  ceph::spinlock lock;
+  Spinlock lock;
   uint64_t start = Cycles::rdtsc();
   for (int i = 0; i < count; i++) {
     lock.lock();
@@ -757,18 +776,17 @@ class FakeContext : public Context {
 double perf_timer()
 {
   int count = 1000000;
-  ceph::mutex lock = ceph::make_mutex("perf_timer::lock");
+  Mutex lock("perf_timer::lock");
   SafeTimer timer(g_ceph_context, lock);
   FakeContext **c = new FakeContext*[count];
   for (int i = 0; i < count; i++) {
     c[i] = new FakeContext();
   }
   uint64_t start = Cycles::rdtsc();
-  std::lock_guard l{lock};
+  Mutex::Locker l(lock);
   for (int i = 0; i < count; i++) {
-    if (timer.add_event_after(12345, c[i])) {
-      timer.cancel_event(c[i]);
-    }
+    timer.add_event_after(12345, c[i]);
+    timer.cancel_event(c[i]);
   }
   uint64_t stop = Cycles::rdtsc();
   delete[] c;
@@ -912,6 +930,8 @@ TestInfo tests[] = {
     "copy out 2 small ptrs from buffer"},
   {"buffer_encode10", buffer_encode,
     "buffer encoding 10 structures onto existing ptr"},
+  {"buffer_get_contiguous", buffer_get_contiguous,
+    "Buffer::get_contiguous"},
   {"buffer_iterator", buffer_iterator,
     "iterate over buffer with 5 ptrs"},
   {"cond_ping_pong", cond_ping_pong,
@@ -1000,8 +1020,7 @@ int main(int argc, char *argv[])
   argv_to_vec(argc, (const char **)argv, args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
   Cycles::init();
 

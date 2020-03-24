@@ -32,9 +32,9 @@ protected:
 
   void SetUp() override;
   void TearDown() override;
-  rados_t cluster = NULL;
-  rados_ioctx_t ioctx = NULL;
-  rados_striper_t striper = NULL;
+  rados_t cluster;
+  rados_ioctx_t ioctx;
+  rados_striper_t striper;
 };
 
 class StriperTestPP : public ::testing::Test {

@@ -4,6 +4,7 @@ tasks:
       mds:
         - "mds.dir_split"
 - workunit:
+    timeout: 6h
     clients:
       all:
         - fs/misc

@@ -1,6 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -ex
+set -e
+set -x
 
 function expect_false()
 {

@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 if [ $# -ne 5 ]; then
     echo 'Usage: ceph_install.sh <admin-node> <mon-node> <osd-node> <osd-node> <osd-node>'
     exit -1

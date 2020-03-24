@@ -13,7 +13,6 @@
  */
 #include "rgw/rgw_period_history.h"
 #include "rgw/rgw_rados.h"
-#include "rgw/rgw_zone.h"
 #include "global/global_init.h"
 #include "common/ceph_argparse.h"
 #include <boost/lexical_cast.hpp>
@@ -46,7 +45,7 @@ using Ids = std::vector<std::string>;
 class RecordingPuller : public RGWPeriodHistory::Puller {
   const int error;
  public:
-  explicit RecordingPuller(int error) : error(error) {}
+  RecordingPuller(int error) : error(error) {}
   Ids ids;
   int pull(const std::string& id, RGWPeriod& period) override {
     ids.push_back(id);
@@ -324,8 +323,7 @@ int main(int argc, char** argv)
   argv_to_vec(argc, (const char **)argv, args);
 
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-			 CODE_ENVIRONMENT_UTILITY,
-			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
 
   ::testing::InitGoogleTest(&argc, argv);

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 #
 # Generic pool quota test
@@ -33,7 +33,7 @@ function TEST_pool_quota() {
     run_osd $dir 1 || return 1
     run_osd $dir 2 || return 1
 
-    local poolname=testquota
+    local poolname=testquoa
     create_pool $poolname 20
     local objects=`ceph df detail | grep -w $poolname|awk '{print $3}'`
     local bytes=`ceph df detail | grep -w $poolname|awk '{print $4}'`
@@ -50,14 +50,14 @@ function TEST_pool_quota() {
 
     objects=`ceph df detail | grep -w $poolname|awk '{print $3}'`
     bytes=`ceph df detail | grep -w $poolname|awk '{print $4}'`
-   
-    if [ $objects != '1000' ] || [ $bytes != '1K' ] ;
-      then
-      return 1
-    fi
 
-    ceph osd pool delete  $poolname $poolname  --yes-i-really-really-mean-it
-    teardown $dir || return 1
+     if [ $objects != '1000' ] || [ $bytes != '1024' ] ;
+       then
+       return 1
+     fi
+
+     ceph osd pool delete  $poolname $poolname  --yes-i-really-really-mean-it
+     teardown $dir || return 1
 }
 
 main testpoolquota

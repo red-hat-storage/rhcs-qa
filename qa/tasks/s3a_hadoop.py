@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import time
 from teuthology import misc
 from teuthology.orchestra import run
 
@@ -14,12 +15,11 @@ def task(ctx, config):
       -tasks:
          ceph-ansible:
          s3a-hadoop:
-           maven-version: '3.6.3' (default)
-           hadoop-version: '2.9.2'
+           maven-version: '3.3.9' (default)
+           hadoop-version: '2.7.3'
            bucket-name: 's3atest' (default)
            access-key: 'anykey' (uses a default value)
            secret-key: 'secretkey' ( uses a default value)
-           role: client.0
     """
     if config is None:
         config = {}
@@ -27,21 +27,16 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         "task only supports a dictionary for configuration"
 
-    assert hasattr(ctx, 'rgw'), 's3a-hadoop must run after the rgw task'
-
     overrides = ctx.config.get('overrides', {})
     misc.deep_merge(config, overrides.get('s3a-hadoop', {}))
     testdir = misc.get_testdir(ctx)
-
-    role = config.get('role')
-    (remote,) = ctx.cluster.only(role).remotes.keys()
-    endpoint = ctx.rgw.role_endpoints.get(role)
-    assert endpoint, 's3tests: no rgw endpoint for {}'.format(role)
-
+    rgws = ctx.cluster.only(misc.is_type('rgw'))
+    # use the first rgw node to test s3a
+    rgw_node = rgws.remotes.keys()[0]
     # get versions
     maven_major = config.get('maven-major', 'maven-3')
-    maven_version = config.get('maven-version', '3.6.3')
-    hadoop_ver = config.get('hadoop-version', '2.9.2')
+    maven_version = config.get('maven-version', '3.6.0')
+    hadoop_ver = config.get('hadoop-version', '2.7.3')
     bucket_name = config.get('bucket-name', 's3atest')
     access_key = config.get('access-key', 'EGAQRD2ULOIFKFSKCT4F')
     secret_key = config.get(
@@ -55,11 +50,8 @@ def task(ctx, config):
         '{maven_major}/{maven_version}/binaries/'.format(maven_major=maven_major, maven_version=maven_version) + apache_maven
     hadoop_git = 'https://github.com/apache/hadoop'
     hadoop_rel = 'hadoop-{ver} rel/release-{ver}'.format(ver=hadoop_ver)
-    if hadoop_ver == 'trunk':
-        # just checkout a new branch out of trunk
-        hadoop_rel = 'hadoop-ceph-trunk'
-    install_prereq(remote)
-    remote.run(
+    install_prereq(rgw_node)
+    rgw_node.run(
         args=[
             'cd',
             testdir,
@@ -84,23 +76,28 @@ def task(ctx, config):
             run.Raw(hadoop_rel)
         ]
     )
-    configure_s3a(remote, endpoint.dns_name, access_key, secret_key, bucket_name, testdir)
-    setup_user_bucket(remote, endpoint.dns_name, access_key, secret_key, bucket_name, testdir)
+    dnsmasq_name = 's3.ceph.com'
+    configure_s3a(rgw_node, dnsmasq_name, access_key, secret_key, bucket_name, testdir)
+    setup_dnsmasq(rgw_node, dnsmasq_name)
+    fix_rgw_config(rgw_node, dnsmasq_name)
+    setup_user_bucket(rgw_node, dnsmasq_name, access_key, secret_key, bucket_name, testdir)
     if hadoop_ver.startswith('2.8'):
         # test all ITtests but skip AWS test using public bucket landsat-pds
-        # which is not available from within this test
-        test_options = '-Dit.test=ITestS3A* -Dparallel-tests -Dscale \
-                        -Dfs.s3a.scale.test.timeout=1200 \
-                        -Dfs.s3a.scale.test.huge.filesize=256M verify'
+        # which is not available from within this test      
+        test_options = '-Dit.test=ITestS3A* -Dfs.s3a.scale.test.enabled -Dparallel-tests -Dscale -Dfs.s3a.scale.test.huge.filesize=128M verify'
     else:
         test_options = 'test -Dtest=S3a*,TestS3A*'
     try:
-        run_s3atest(remote, maven_version, testdir, test_options)
+        run_s3atest(rgw_node, maven_version, testdir, test_options)
         yield
     finally:
         log.info("Done s3a testing, Cleaning up")
         for fil in ['apache*', 'hadoop*', 'venv*', 'create*']:
-            remote.run(args=['rm', run.Raw('-rf'), run.Raw('{tdir}/{file}'.format(tdir=testdir, file=fil))])
+            rgw_node.run(args=['rm', run.Raw('-rf'), run.Raw('{tdir}/{file}'.format(tdir=testdir, file=fil))])
+        # restart and let NM restore original config
+        rgw_node.run(args=['sudo', 'systemctl', 'stop', 'dnsmasq'])
+        rgw_node.run(args=['sudo', 'systemctl', 'restart', 'network.service'], check_status=False)
+        rgw_node.run(args=['sudo', 'systemctl', 'status', 'network.service'], check_status=False)
 
 
 def install_prereq(client):
@@ -123,6 +120,70 @@ def install_prereq(client):
                 )
 
 
+def setup_dnsmasq(client, name):
+    """
+    Setup simple dnsmasq name eg: s3.ceph.com
+    Local RGW host can then be used with whatever name has been setup with.
+    """
+    resolv_conf = "nameserver 127.0.0.1\n"
+    dnsmasq_template = """address=/{name}/{ip_address}
+server=10.8.128.1
+server=10.10.160.1
+""".format(name=name, ip_address=client.ip_address)
+    dnsmasq_config_path = '/etc/dnsmasq.d/ceph'
+    # point resolv.conf to local dnsmasq
+    misc.sudo_write_file(
+        remote=client,
+        path='/etc/resolv.conf',
+        data=resolv_conf,
+    )
+    misc.sudo_write_file(
+        remote=client,
+        path=dnsmasq_config_path,
+        data=dnsmasq_template,
+    )
+    client.run(args=['cat', dnsmasq_config_path])
+    # restart dnsmasq
+    client.run(args=['sudo', 'systemctl', 'restart', 'dnsmasq'])
+    client.run(args=['sudo', 'systemctl', 'status', 'dnsmasq'])
+    time.sleep(5)
+    # verify dns name is set
+    client.run(args=['ping', '-c', '4', name])
+
+
+def fix_rgw_config(client, name):
+    """
+    Fix RGW config in ceph.conf, we need rgw dns name entry
+    and also modify the port to use :80 for s3a tests to work
+    """
+    rgw_dns_name = 'rgw dns name = {name}'.format(name=name)
+    ceph_conf_path = '/etc/ceph/ceph.conf'
+    # append rgw_dns_name
+    client.run(
+        args=[
+            'sudo',
+            'sed',
+            run.Raw('-i'),
+            run.Raw("'/client.rgw*/a {rgw_name}'".format(rgw_name=rgw_dns_name)),
+            ceph_conf_path
+
+        ]
+    )
+    # listen on port 80
+    client.run(
+        args=[
+            'sudo',
+            'sed',
+            run.Raw('-i'),
+            run.Raw('s/:8080/:80/'),
+            ceph_conf_path
+        ]
+    )
+    client.run(args=['cat', ceph_conf_path])
+    client.run(args=['sudo', 'systemctl', 'restart', 'ceph-radosgw.target'])
+    client.run(args=['sudo', 'systemctl', 'status', 'ceph-radosgw.target'])
+
+
 def setup_user_bucket(client, dns_name, access_key, secret_key, bucket_name, testdir):
     """
     Create user with access_key and secret_key that will be
@@ -136,7 +197,7 @@ def setup_user_bucket(client, dns_name, access_key, secret_key, bucket_name, tes
             'create',
             run.Raw('--uid'),
             's3a',
-            run.Raw('--display-name="s3a cephtests"'),
+            run.Raw('--display-name=s3a cephtests'),
             run.Raw('--access-key={access_key}'.format(access_key=access_key)),
             run.Raw('--secret-key={secret_key}'.format(secret_key=secret_key)),
             run.Raw('--email=s3a@ceph.com'),
@@ -168,7 +229,7 @@ conn = boto.connect_s3(
         )
 bucket = conn.create_bucket('{bucket_name}')
 for bucket in conn.get_all_buckets():
-        print(bucket.name + "\t" + bucket.creation_date)
+        print bucket.name + "\t" + bucket.creation_date
 """.format(access_key=access_key, secret_key=secret_key, dns_name=dns_name, bucket_name=bucket_name)
     py_bucket_file = '{testdir}/create_bucket.py'.format(testdir=testdir)
     misc.sudo_write_file(
@@ -197,8 +258,7 @@ def run_s3atest(client, maven_version, testdir, test_options):
     """
     aws_testdir = '{testdir}/hadoop/hadoop-tools/hadoop-aws/'.format(testdir=testdir)
     run_test = '{testdir}/apache-maven-{maven_version}/bin/mvn'.format(testdir=testdir, maven_version=maven_version)
-    # Remove AWS CredentialsProvider tests as it hits public bucket from AWS
-    # better solution is to create the public bucket on local server and test
+    # Remove AWS CredentialsProvider tests as it hits public bucket from AWS'
     rm_test = 'rm src/test/java/org/apache/hadoop/fs/s3a/ITestS3AAWSCredentialsProvider.java'
     client.run(
         args=[
@@ -222,11 +282,6 @@ def configure_s3a(client, dns_name, access_key, secret_key, bucket_name, testdir
 <property>
 <name>fs.s3a.endpoint</name>
 <value>{name}</value>
-</property>
-
-<property>
-<name>fs.contract.test.fs.s3a</name>
-<value>s3a://{bucket_name}/</value>
 </property>
 
 <property>

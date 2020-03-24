@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#/bin/bash -fv
 #
 # Install Openstack.
 #     Usage: openstack <openstack-site> <ceph-monitor>
@@ -14,7 +14,6 @@
 # The files directory contains files to be copied to remote sites.
 #
 
-set -fv
 source ./copy_func.sh
 source ./fix_conf_file.sh
 openstack_node=${1}

@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 ed /etc/ansible/hosts << EOF
 $
 a

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 [ $# -lt 1 ] && echo "usage: $0 <num-clusters>" && exit 1
 

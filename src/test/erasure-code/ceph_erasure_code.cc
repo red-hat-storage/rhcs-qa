@@ -27,7 +27,6 @@
 #include "global/global_context.h"
 #include "global/global_init.h"
 #include "common/ceph_argparse.h"
-#include "common/ceph_context.h"
 #include "common/config.h"
 #include "common/Clock.h"
 #include "include/utime.h"
@@ -74,7 +73,7 @@ int ErasureCodeCommand::setup(int argc, char** argv) {
     vm);
   po::notify(vm);
 
-  vector<const char *> ceph_options;
+  vector<const char *> ceph_options, def_args;
   vector<string> ceph_option_strings = po::collect_unrecognized(
     parsed.options, po::include_positional);
   ceph_options.reserve(ceph_option_strings.size());
@@ -85,11 +84,14 @@ int ErasureCodeCommand::setup(int argc, char** argv) {
   }
 
   cct = global_init(
-    NULL, ceph_options, CEPH_ENTITY_TYPE_CLIENT,
+    &def_args, ceph_options, CEPH_ENTITY_TYPE_CLIENT,
     CODE_ENVIRONMENT_UTILITY,
-    CINIT_FLAG_NO_MON_CONFIG);
+    CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
   common_init_finish(g_ceph_context);
-  g_ceph_context->_conf.apply_changes(nullptr);
+  g_ceph_context->_conf->apply_changes(NULL);
+  const char* env = getenv("CEPH_LIB");
+  string directory(env ? env : ".libs");
+  g_conf->set_val_or_die("erasure_code_dir", directory, false);
 
   if (vm.count("help")) {
     cout << desc << std::endl;
@@ -125,10 +127,10 @@ int ErasureCodeCommand::run() {
 int ErasureCodeCommand::plugin_exists() {
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
   ErasureCodePlugin *plugin = 0;
-  std::lock_guard l{instance.lock};
+  Mutex::Locker l(instance.lock);
   stringstream ss;
   int code = instance.load(vm["plugin_exists"].as<string>(),
-			   g_conf().get_val<std::string>("erasure_code_dir"), &plugin, &ss);
+			   g_conf->get_val<std::string>("erasure_code_dir"), &plugin, &ss);
   if (code)
     cerr << ss.str() << endl;
   return code;
@@ -144,7 +146,7 @@ int ErasureCodeCommand::display_information() {
   }
 
   int code = instance.factory(profile["plugin"],
-			      g_conf().get_val<std::string>("erasure_code_dir"),
+			      g_conf->get_val<std::string>("erasure_code_dir"),
 			      profile,
 			      &erasure_code, &cerr);
   if (code)

@@ -1,6 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/bash  -x
 # can't use -e because of background process
-set -x
 
 IMAGE=rbdrw-image
 LOCKID=rbdrw
@@ -10,12 +9,12 @@ RBDRW=$RELPATH/rbdrw.py
 rbd create $IMAGE --size 10 --image-format 2 --image-shared || exit 1
 
 # rbdrw loops doing I/O to $IMAGE after locking with lockid $LOCKID
-python3 $RBDRW $IMAGE $LOCKID &
+python $RBDRW $IMAGE $LOCKID &
 iochild=$!
 
 # give client time to lock and start reading/writing
-LOCKS='[]'
-while [ "$LOCKS" == '[]' ]
+LOCKS='{}'
+while [ "$LOCKS" == "{}" ]
 do
     LOCKS=$(rbd lock list $IMAGE --format json)
     sleep 1

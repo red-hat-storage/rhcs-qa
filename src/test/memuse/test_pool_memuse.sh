@@ -13,7 +13,7 @@ for i in `seq 0 $1`; do
     for j in `seq 0 9`; do
 	poolnum=$((i*10+j))
 	poolname="pool$poolnum"
-	./ceph osd pool create $poolname 8 &
+	./rados mkpool $poolname &
     done
     wait
 done

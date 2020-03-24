@@ -1,3 +1,4 @@
+#/bin/bash -fv
 #
 # copy_file(<filename>, <node>, <directory>, [<permissions>], [<owner>]
 # 

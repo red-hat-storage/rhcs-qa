@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#! /bin/bash
 cmd_wait=$1
 shift
 sites=$*

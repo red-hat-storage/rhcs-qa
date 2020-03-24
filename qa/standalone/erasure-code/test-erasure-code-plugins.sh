@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-set -x
+#!/bin/bash -x
 
 source $CEPH_ROOT/qa/standalone/ceph-helpers.sh
 

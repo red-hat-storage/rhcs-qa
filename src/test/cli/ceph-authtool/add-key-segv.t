@@ -1,4 +1,4 @@
-  $ ceph-authtool kring --create-keyring --mode 0644
+  $ ceph-authtool kring --create-keyring
   creating kring
 
   $ ceph-authtool kring --add-key 'FAKEBASE64 foo'

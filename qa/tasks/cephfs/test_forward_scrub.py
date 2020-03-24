@@ -202,7 +202,7 @@ class TestForwardScrub(CephFSTestCase):
         inotable_dict = {}
         for rank in ranks:
             inotable_oid = "mds{rank:d}_".format(rank=rank) + "inotable"
-            print("Trying to fetch inotable object: " + inotable_oid)
+            print "Trying to fetch inotable object: " + inotable_oid
 
             #self.fs.get_metadata_object("InoTable", "mds0_inotable")
             inotable_raw = self.fs.get_metadata_object_raw(inotable_oid)
@@ -232,8 +232,7 @@ class TestForwardScrub(CephFSTestCase):
         self.mount_a.umount_wait()
 
         with self.assert_cluster_log("inode table repaired", invert_match=True):
-            out_json = self.fs.rank_tell(["scrub", "start", "/", "repair", "recursive"])
-            self.assertNotEqual(out_json, None)
+            self.fs.mds_asok(["scrub_path", "/", "repair", "recursive"])
 
         self.mds_cluster.mds_stop()
         self.mds_cluster.mds_fail()
@@ -242,21 +241,20 @@ class TestForwardScrub(CephFSTestCase):
         # is all that will be in the InoTable in memory)
 
         self.fs.journal_tool(["event", "splice",
-                              "--inode={0}".format(inos["./file2_sixmegs"]), "summary"], 0)
+            "--inode={0}".format(inos["./file2_sixmegs"]), "summary"])
 
         self.fs.journal_tool(["event", "splice",
-                              "--inode={0}".format(inos["./file3_sixmegs"]), "summary"], 0)
+            "--inode={0}".format(inos["./file3_sixmegs"]), "summary"])
 
         # Revert to old inotable.
-        for key, value in inotable_copy.items():
+        for key, value in inotable_copy.iteritems():
            self.fs.put_metadata_object_raw(key, value)
 
         self.mds_cluster.mds_restart()
         self.fs.wait_for_daemons()
 
         with self.assert_cluster_log("inode table repaired"):
-            out_json = self.fs.rank_tell(["scrub", "start", "/", "repair", "recursive"])
-            self.assertNotEqual(out_json, None)
+            self.fs.mds_asok(["scrub_path", "/", "repair", "recursive"])
 
         self.mds_cluster.mds_stop()
         table_text = self.fs.table_tool(["0", "show", "inode"])
@@ -286,8 +284,7 @@ class TestForwardScrub(CephFSTestCase):
                                   "oh i'm sorry did i overwrite your xattr?")
 
         with self.assert_cluster_log("bad backtrace on inode"):
-            out_json = self.fs.rank_tell(["scrub", "start", "/", "repair", "recursive"])
-            self.assertNotEqual(out_json, None)
+            self.fs.mds_asok(["scrub_path", "/", "repair", "recursive"])
         self.fs.mds_asok(["flush", "journal"])
         backtrace = self.fs.read_backtrace(file_ino)
         self.assertEqual(['alpha', 'parent_a'],
