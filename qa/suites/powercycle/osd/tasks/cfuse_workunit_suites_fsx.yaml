@@ -1,0 +1,19 @@
+tasks:
+- ceph-fuse:
+- install:
+    extra_system_packages:
+      deb:
+      - libaio-dev
+      - libtool-bin
+      - uuid-dev
+      - xfslibs-dev
+      rpm:
+      - libaio-devel
+      - libtool
+      - libuuid-devel
+      - xfsprogs-devel
+- workunit:
+    timeout: 6h
+    clients:
+      all:
+        - suites/fsx.sh
