@@ -7,7 +7,7 @@
 #include "test/librados_test_stub/MockTestMemIoCtxImpl.h"
 #include "test/librados_test_stub/MockTestMemRadosClient.h"
 #include "common/Cond.h"
-#include "common/ceph_mutex.h"
+#include "common/Mutex.h"
 #include "librados/AioCompletionImpl.h"
 #include "librbd/Watcher.h"
 #include "librbd/watcher/RewatchRequest.h"
@@ -38,7 +38,6 @@ struct MockWatcher : public Watcher {
 namespace librbd {
 
 using ::testing::_;
-using ::testing::DoAll;
 using ::testing::DoDefault;
 using ::testing::Invoke;
 using ::testing::InSequence;
@@ -49,7 +48,8 @@ using ::testing::WithArgs;
 
 class TestMockWatcher : public TestMockFixture {
 public:
-  TestMockWatcher() =  default;
+  TestMockWatcher() : m_lock("TestMockWatcher::m_lock") {
+  }
 
   virtual void SetUp() {
     TestMockFixture::SetUp();
@@ -76,7 +76,7 @@ public:
           }
 
           c->get();
-          mock_image_ctx.image_ctx->op_work_queue->queue(new LambdaContext([mock_rados_client, action, c](int r) {
+          mock_image_ctx.image_ctx->op_work_queue->queue(new FunctionContext([mock_rados_client, action, c](int r) {
               if (action) {
                 action();
               }
@@ -97,7 +97,7 @@ public:
       .WillOnce(DoAll(Invoke([this, &mock_image_ctx, mock_rados_client, r, action](
               uint64_t handle, librados::AioCompletionImpl *c) {
           c->get();
-          mock_image_ctx.image_ctx->op_work_queue->queue(new LambdaContext([mock_rados_client, action, c](int r) {
+          mock_image_ctx.image_ctx->op_work_queue->queue(new FunctionContext([mock_rados_client, action, c](int r) {
               if (action) {
                 action();
               }
@@ -112,15 +112,15 @@ public:
   librados::WatchCtx2 *m_watch_ctx = nullptr;
 
   void notify_watch() {
-    std::lock_guard locker{m_lock};
+    Mutex::Locker locker(m_lock);
     ++m_watch_count;
-    m_cond.notify_all();
+    m_cond.Signal();
   }
 
   bool wait_for_watch(MockImageCtx &mock_image_ctx, size_t count) {
-    std::unique_lock locker{m_lock};
+    Mutex::Locker locker(m_lock);
     while (m_watch_count < count) {
-      if (m_cond.wait_for(locker, 10s) == std::cv_status::timeout) {
+      if (m_cond.WaitInterval(m_lock, utime_t(10, 0)) != 0) {
         return false;
       }
     }
@@ -128,8 +128,8 @@ public:
     return true;
   }
 
-  ceph::mutex m_lock = ceph::make_mutex("TestMockWatcher::m_lock");
-  ceph::condition_variable m_cond;
+  Mutex m_lock;
+  Cond m_cond;
   size_t m_watch_count = 0;
 };
 

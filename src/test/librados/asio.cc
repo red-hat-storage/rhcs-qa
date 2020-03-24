@@ -21,8 +21,6 @@
 
 #ifdef HAVE_BOOST_CONTEXT
 #define BOOST_COROUTINES_NO_DEPRECATION_WARNING
-#include <boost/range/begin.hpp>
-#include <boost/range/end.hpp>
 #include <boost/asio/spawn.hpp>
 #endif
 #include <boost/asio/use_future.hpp>

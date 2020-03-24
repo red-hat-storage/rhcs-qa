@@ -12,6 +12,7 @@
  *
  */
 
+#include "common/Mutex.h"
 #include "common/HeartbeatMap.h"
 #include "common/ceph_context.h"
 #include "common/config.h"

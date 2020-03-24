@@ -2204,9 +2204,8 @@ TEST_F(PGLogTest, get_request) {
     eversion_t replay_version;
     version_t user_version;
     int return_code = 0;
-    vector<pg_log_op_return_item_t> op_returns;
     bool got = log.get_request(
-      entry.reqid, &replay_version, &user_version, &return_code, &op_returns);
+      entry.reqid, &replay_version, &user_version, &return_code);
     EXPECT_TRUE(got);
     EXPECT_EQ(entry.return_code, return_code);
     EXPECT_EQ(entry.version, replay_version);
@@ -2272,23 +2271,23 @@ TEST_F(PGLogTest, split_into_preserves_may_include_deletes) {
   clear();
 
   {
-    may_include_deletes_in_missing_dirty = false;
+    rebuilt_missing_with_deletes = false;
     missing.may_include_deletes = true;
     PGLog child_log(cct);
     pg_t child_pg;
     split_into(child_pg, 6, &child_log);
     ASSERT_TRUE(child_log.get_missing().may_include_deletes);
-    ASSERT_TRUE(child_log.get_may_include_deletes_in_missing_dirty());
+    ASSERT_TRUE(child_log.get_rebuilt_missing_with_deletes());
   }
 
   {
-    may_include_deletes_in_missing_dirty = false;
+    rebuilt_missing_with_deletes = false;
     missing.may_include_deletes = false;
     PGLog child_log(cct);
     pg_t child_pg;
     split_into(child_pg, 6, &child_log);
     ASSERT_FALSE(child_log.get_missing().may_include_deletes);
-    ASSERT_FALSE(child_log.get_may_include_deletes_in_missing_dirty());
+    ASSERT_FALSE(child_log.get_rebuilt_missing_with_deletes());
   }
 }
 
@@ -2888,7 +2887,6 @@ TEST_F(PGLogTrimTest, TestGetRequest) {
   eversion_t version;
   version_t user_version;
   int return_code;
-  vector<pg_log_op_return_item_t> op_returns;
 
   osd_reqid_t log_reqid = osd_reqid_t(client, 8, 5);
   osd_reqid_t dup_reqid = osd_reqid_t(client, 8, 3);
@@ -2896,18 +2894,15 @@ TEST_F(PGLogTrimTest, TestGetRequest) {
 
   bool result;
 
-  result = log.get_request(log_reqid, &version, &user_version, &return_code,
-			   &op_returns);
+  result = log.get_request(log_reqid, &version, &user_version, &return_code);
   EXPECT_EQ(true, result);
   EXPECT_EQ(mk_evt(21, 165), version);
 
-  result = log.get_request(dup_reqid, &version, &user_version, &return_code,
-			   &op_returns);
+  result = log.get_request(dup_reqid, &version, &user_version, &return_code);
   EXPECT_EQ(true, result);
   EXPECT_EQ(mk_evt(15, 155), version);
 
-  result = log.get_request(bad_reqid, &version, &user_version, &return_code,
-			   &op_returns);
+  result = log.get_request(bad_reqid, &version, &user_version, &return_code);
   EXPECT_FALSE(result);
 }
 
@@ -2936,6 +2931,7 @@ TEST_F(PGLogTest, _merge_object_divergent_entries) {
     _merge_object_divergent_entries(log, hoid,
                                     orig_entries, oinfo,
                                     log.get_can_rollback_to(),
+                                    log.get_can_rollback_to(),
                                     missing, &rollbacker,
                                     this);
     // No core dump
@@ -2961,6 +2957,7 @@ TEST_F(PGLogTest, _merge_object_divergent_entries) {
     LogHandler rollbacker;
     _merge_object_divergent_entries(log, hoid,
                                     orig_entries, oinfo,
+                                    log.get_can_rollback_to(),
                                     log.get_can_rollback_to(),
                                     missing, &rollbacker,
                                     this);

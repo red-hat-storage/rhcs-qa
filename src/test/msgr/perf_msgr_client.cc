@@ -28,7 +28,6 @@ using namespace std;
 #include "global/global_init.h"
 #include "msg/Messenger.h"
 #include "messages/MOSDOp.h"
-#include "auth/DummyAuth.h"
 
 #include <atomic>
 
@@ -76,23 +75,23 @@ class MessengerClient {
     ClientDispatcher dispatcher;
 
    public:
-    ceph::mutex lock = ceph::make_mutex("MessengerBenchmark::ClientThread::lock");
-    ceph::condition_variable cond;
+    Mutex lock;
+    Cond cond;
     uint64_t inflight;
 
     ClientThread(Messenger *m, int c, ConnectionRef con, int len, int ops, int think_time_us):
         msgr(m), concurrent(c), conn(con), oid("object-name"), oloc(1, 1), msg_len(len), ops(ops),
-        dispatcher(think_time_us, this), inflight(0) {
+        dispatcher(think_time_us, this), lock("MessengerBenchmark::ClientThread::lock"), inflight(0) {
       m->add_dispatcher_head(&dispatcher);
       bufferptr ptr(msg_len);
       memset(ptr.c_str(), 0, msg_len);
       data.append(ptr);
     }
     void *entry() override {
-      std::unique_lock locker{lock};
+      lock.Lock();
       for (int i = 0; i < ops; ++i) {
         if (inflight > uint64_t(concurrent)) {
-	  cond.wait(locker);
+          cond.Wait(lock);
         }
 	hobject_t hobj(oid, oloc.key, CEPH_NOSNAP, pgid.ps(), pgid.pool(),
 		       oloc.nspace);
@@ -104,7 +103,7 @@ class MessengerClient {
         conn->send_message(m);
         //cerr << __func__ << " send m=" << m << std::endl;
       }
-      locker.unlock();
+      lock.Unlock();
       msgr->shutdown();
       return 0;
     }
@@ -115,12 +114,10 @@ class MessengerClient {
   int think_time_us;
   vector<Messenger*> msgrs;
   vector<ClientThread*> clients;
-  DummyAuthClientServer dummy_auth;
 
  public:
   MessengerClient(const string &t, const string &addr, int delay):
-      type(t), serveraddr(addr), think_time_us(delay),
-      dummy_auth(g_ceph_context) {
+      type(t), serveraddr(addr), think_time_us(delay) {
   }
   ~MessengerClient() {
     for (uint64_t i = 0; i < clients.size(); ++i)
@@ -134,11 +131,9 @@ class MessengerClient {
     entity_addr_t addr;
     addr.parse(serveraddr.c_str());
     addr.set_nonce(0);
-    dummy_auth.auth_registry.refresh_config();
     for (int i = 0; i < jobs; ++i) {
       Messenger *msgr = Messenger::create(g_ceph_context, type, entity_name_t::CLIENT(0), "client", getpid()+i, 0);
       msgr->set_default_policy(Messenger::Policy::lossless_client(0));
-      msgr->set_auth_client(&dummy_auth);
       msgr->start();
       entity_addrvec_t addrs(addr);
       ConnectionRef conn = msgr->connect_to_osd(addrs);
@@ -159,9 +154,9 @@ class MessengerClient {
 void MessengerClient::ClientDispatcher::ms_fast_dispatch(Message *m) {
   usleep(think_time);
   m->put();
-  std::lock_guard l{thread->lock};
+  Mutex::Locker l(thread->lock);
   thread->inflight--;
-  thread->cond.notify_all();
+  thread->cond.Signal();
 }
 
 
@@ -214,8 +209,7 @@ int main(int argc, char **argv)
   uint64_t start = Cycles::rdtsc();
   client.start();
   uint64_t stop = Cycles::rdtsc();
-  cerr << " Total op " << (ios * numjobs) << " run time "
-       << Cycles::to_microseconds(stop - start) << "us." << std::endl;
+  cerr << " Total op " << ios << " run time " << Cycles::to_microseconds(stop - start) << "us." << std::endl;
 
   return 0;
 }

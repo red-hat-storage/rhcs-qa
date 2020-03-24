@@ -20,6 +20,7 @@
 #include "common/config.h"
 #include "common/ceph_argparse.h"
 #include "common/debug.h"
+#include "global/global_init.h"
 #include "include/ceph_assert.h"
 #include "gtest/gtest.h"
 #include "rgw/rgw_token.h"

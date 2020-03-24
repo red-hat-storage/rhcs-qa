@@ -23,6 +23,7 @@
 #include "common/Thread.h"
 #include "include/stringify.h"
 #include "osd/ReplicatedBackend.h"
+
 #include <sstream>
 
 TEST(hobject, prefixes0)
@@ -189,7 +190,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						   osdmap,
 						   lastmap,
 						   pgid,
-                                                   *recoverable,
+                                                   recoverable.get(),
 						   &past_intervals));
     ASSERT_TRUE(past_intervals.empty());
   }
@@ -218,7 +219,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
     old_primary = new_primary;
   }
@@ -247,7 +248,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -274,7 +275,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -308,7 +309,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -342,7 +343,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pg_t(pg_num - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -377,7 +378,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  lastmap,  // reverse order!
 						  osdmap,
 						  pg_t(pg_num - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -410,7 +411,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pg_t(pg_num - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -443,7 +444,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pg_t(pg_num / 2 - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -476,7 +477,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  lastmap,  // reverse order!
 						  osdmap,
 						  pg_t(pg_num / 2 - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -509,7 +510,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pg_t(pg_num / 2 - 1, pool_id),
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -543,7 +544,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals));
   }
 
@@ -572,7 +573,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals,
 						  &out));
     ASSERT_NE(string::npos, out.str().find("acting set is too small"));
@@ -622,7 +623,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals,
 						  &out));
     ASSERT_NE(string::npos, out.str().find("acting set is too small"));
@@ -655,7 +656,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals,
 						  &out));
     ASSERT_NE(string::npos, out.str().find("includes interval"));
@@ -698,7 +699,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals,
 						  &out));
     ASSERT_NE(string::npos, out.str().find("presumed to have been rw"));
@@ -745,7 +746,7 @@ for (unsigned i = 0; i < 4; ++i) {
 						  osdmap,
 						  lastmap,
 						  pgid,
-                                                  *recoverable,
+                                                  recoverable.get(),
 						  &past_intervals,
 						  &out));
     ASSERT_NE(string::npos, out.str().find("does not include interval"));
@@ -898,75 +899,6 @@ TEST(pg_t, merge)
   b = pgid.is_merge_source(9, 8, &parent);
   ASSERT_FALSE(b);
   ASSERT_FALSE(parent.is_merge_target(9, 8));
-}
-
-TEST(ObjectCleanRegions, mark_data_region_dirty)
-{
-  ObjectCleanRegions clean_regions;
-  uint64_t offset_1, len_1, offset_2, len_2;
-  offset_1 = 4096;
-  len_1 = 8192;
-  offset_2 = 40960;
-  len_2 = 4096;
-
-  interval_set<uint64_t> expect_dirty_region;
-  EXPECT_EQ(expect_dirty_region, clean_regions.get_dirty_regions());
-  expect_dirty_region.insert(offset_1, len_1);
-  expect_dirty_region.insert(offset_2, len_2);
-
-  clean_regions.mark_data_region_dirty(offset_1, len_1);
-  clean_regions.mark_data_region_dirty(offset_2, len_2);
-  EXPECT_EQ(expect_dirty_region, clean_regions.get_dirty_regions());
-}
-
-TEST(ObjectCleanRegions, mark_omap_dirty)
-{
-  ObjectCleanRegions clean_regions;
-
-  EXPECT_FALSE(clean_regions.omap_is_dirty());
-  clean_regions.mark_omap_dirty();
-  EXPECT_TRUE(clean_regions.omap_is_dirty());
-}
-
-TEST(ObjectCleanRegions, merge)
-{
-  ObjectCleanRegions cr1, cr2;
-  interval_set<uint64_t> cr1_expect;
-  interval_set<uint64_t> cr2_expect;
-  ASSERT_EQ(cr1_expect, cr1.get_dirty_regions());
-  ASSERT_EQ(cr2_expect, cr2.get_dirty_regions());
-
-  cr1.mark_data_region_dirty(4096, 4096);
-  cr1_expect.insert(4096, 4096);
-  ASSERT_EQ(cr1_expect, cr1.get_dirty_regions());
-  cr1.mark_data_region_dirty(12288, 8192);
-  cr1_expect.insert(12288, 8192);
-  ASSERT_TRUE(cr1_expect.subset_of(cr1.get_dirty_regions()));
-  cr1.mark_data_region_dirty(32768, 10240);
-  cr1_expect.insert(32768, 10240);
-  cr1_expect.erase(4096, 4096);
-  ASSERT_TRUE(cr1_expect.subset_of(cr1.get_dirty_regions()));
-
-  cr2.mark_data_region_dirty(20480, 12288);
-  cr2_expect.insert(20480, 12288);
-  ASSERT_EQ(cr2_expect, cr2.get_dirty_regions());
-  cr2.mark_data_region_dirty(102400, 4096);
-  cr2_expect.insert(102400, 4096);
-  cr2.mark_data_region_dirty(204800, 8192);
-  cr2_expect.insert(204800, 8192);
-  cr2.mark_data_region_dirty(409600, 4096);
-  cr2_expect.insert(409600, 4096);
-  ASSERT_TRUE(cr2_expect.subset_of(cr2.get_dirty_regions()));
-
-  ASSERT_FALSE(cr2.omap_is_dirty());
-  cr2.mark_omap_dirty();
-  ASSERT_FALSE(cr1.omap_is_dirty());
-  ASSERT_TRUE(cr2.omap_is_dirty());
-
-  cr1.merge(cr2);
-  cr1_expect.insert(204800, 8192);
-  ASSERT_TRUE(cr1_expect.subset_of(cr1.get_dirty_regions()));
-  ASSERT_TRUE(cr1.omap_is_dirty());
 }
 
 TEST(pg_missing_t, constructor)

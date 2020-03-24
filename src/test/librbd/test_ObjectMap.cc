@@ -25,12 +25,9 @@ public:
 
   int when_open_object_map(librbd::ImageCtx *ictx) {
     C_SaferCond ctx;
-    librbd::ObjectMap<> *object_map = new librbd::ObjectMap<>(*ictx, ictx->snap_id);
-    object_map->open(&ctx);
-    int r = ctx.wait();
-    object_map->put();
-
-    return r;
+    librbd::ObjectMap<> object_map(*ictx, ictx->snap_id);
+    object_map.open(&ctx);
+    return ctx.wait();
   }
 };
 
@@ -46,7 +43,7 @@ TEST_F(TestObjectMap, RefreshInvalidatesWhenCorrupt) {
 
   C_SaferCond lock_ctx;
   {
-    std::unique_lock owner_locker{ictx->owner_lock};
+    RWLock::WLocker owner_locker(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&lock_ctx);
   }
   ASSERT_EQ(0, lock_ctx.wait());
@@ -74,7 +71,7 @@ TEST_F(TestObjectMap, RefreshInvalidatesWhenTooSmall) {
 
   C_SaferCond lock_ctx;
   {
-    std::unique_lock owner_locker{ictx->owner_lock};
+    RWLock::WLocker owner_locker(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&lock_ctx);
   }
   ASSERT_EQ(0, lock_ctx.wait());
@@ -103,7 +100,7 @@ TEST_F(TestObjectMap, InvalidateFlagOnDisk) {
 
   C_SaferCond lock_ctx;
   {
-    std::unique_lock owner_locker{ictx->owner_lock};
+    RWLock::WLocker owner_locker(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&lock_ctx);
   }
   ASSERT_EQ(0, lock_ctx.wait());
@@ -142,7 +139,7 @@ TEST_F(TestObjectMap, AcquireLockInvalidatesWhenTooSmall) {
 
   C_SaferCond lock_ctx;
   {
-    std::unique_lock owner_locker{ictx->owner_lock};
+    RWLock::WLocker owner_locker(ictx->owner_lock);
     ictx->exclusive_lock->try_acquire_lock(&lock_ctx);
   }
   ASSERT_EQ(0, lock_ctx.wait());
@@ -196,13 +193,14 @@ TEST_F(TestObjectMap, DISABLED_StressTest) {
 
     throttle.start_op();
     uint64_t object_no = (rand() % object_count);
-    auto ctx = new LambdaContext([&throttle, object_no](int r) {
+    auto ctx = new FunctionContext([&throttle, object_no](int r) {
         ASSERT_EQ(0, r) << "object_no=" << object_no;
         throttle.end_op(r);
       });
 
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::RLocker snap_locker(ictx->snap_lock);
+    RWLock::WLocker object_map_locker(ictx->object_map_lock);
     ASSERT_TRUE(ictx->object_map != nullptr);
 
     if (!ictx->object_map->aio_update<

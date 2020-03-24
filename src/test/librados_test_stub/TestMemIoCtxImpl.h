@@ -28,8 +28,7 @@ public:
 
   int assert_exists(const std::string &oid) override;
 
-  int create(const std::string& oid, bool exclusive,
-             const SnapContext &snapc) override;
+  int create(const std::string& oid, bool exclusive) override;
   int list_snaps(const std::string& o, snap_set_t *out_snaps) override;
   int omap_get_vals(const std::string& oid,
                     const std::string& start_after,
@@ -54,7 +53,7 @@ public:
   int selfmanaged_snap_rollback(const std::string& oid,
                                 uint64_t snapid) override;
   int set_alloc_hint(const std::string& oid, uint64_t expected_object_size,
-                     uint64_t expected_write_size, uint32_t flags,
+                     uint64_t expected_write_size,
                      const SnapContext &snapc) override;
   int sparse_read(const std::string& oid, uint64_t off, uint64_t len,
                   std::map<uint64_t,uint64_t> *m, bufferlist *data_bl) override;

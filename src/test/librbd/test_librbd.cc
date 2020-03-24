@@ -1535,49 +1535,6 @@ TEST_F(TestLibRBD, TestCreateLsDeleteSnapPP)
   ioctx.close();
 }
 
-TEST_F(TestLibRBD, TestGetNameIdSnapPP)
-{
-  librados::IoCtx ioctx;
-  ASSERT_EQ(0, _rados.ioctx_create(m_pool_name.c_str(), ioctx));
-
-  {
-    librbd::RBD rbd;
-    librbd::Image image;
-    int order = 0;
-    std::string name = get_temp_image_name();
-    uint64_t size = 2 << 20;
-
-    ASSERT_EQ(0, create_image_pp(rbd, ioctx, name.c_str(), size, &order));
-    ASSERT_EQ(0, rbd.open(ioctx, image, name.c_str(), NULL));
-
-    ASSERT_EQ(0, image.snap_create("snap1"));
-    ASSERT_EQ(0, image.snap_create("snap2"));
-    ASSERT_EQ(0, image.snap_create("snap3"));
-    vector<librbd::snap_info_t> snaps;
-    int r = image.snap_list(snaps);
-    EXPECT_TRUE(r >= 0);
-
-    for (size_t i = 0; i < snaps.size(); ++i) {
-      std::string expected_snap_name;
-      image.snap_get_name(snaps[i].id, &expected_snap_name);
-      ASSERT_EQ(expected_snap_name, snaps[i].name);
-    }
-
-    for (size_t i = 0; i < snaps.size(); ++i) {
-      uint64_t expected_snap_id;
-      image.snap_get_id(snaps[i].name, &expected_snap_id);
-      ASSERT_EQ(expected_snap_id, snaps[i].id);
-    }
-
-    ASSERT_EQ(0, image.snap_remove("snap1"));
-    ASSERT_EQ(0, image.snap_remove("snap2"));
-    ASSERT_EQ(0, image.snap_remove("snap3"));
-    ASSERT_EQ(0, test_ls_snaps(image, 0));
-  }
-
-  ioctx.close();
-}
-
 TEST_F(TestLibRBD, TestCreateLsRenameSnapPP)
 {
   librados::IoCtx ioctx;
@@ -1948,7 +1905,6 @@ TEST_F(TestLibRBD, TestIO)
   uint64_t size = 2 << 20;  
 
   ASSERT_EQ(0, create_image(ioctx, name.c_str(), size, &order));
-  ASSERT_EQ(0, rados_conf_set(_cluster, "rbd_read_from_replica_policy", "balance"));
   ASSERT_EQ(0, rbd_open(ioctx, name.c_str(), &image, NULL));
   
   char test_data[TEST_IO_SIZE + 1];
@@ -3942,7 +3898,7 @@ public:
 
 typedef ::testing::Types<DiffIterateParams<false>,
                          DiffIterateParams<true> > DiffIterateTypes;
-TYPED_TEST_SUITE(DiffIterateTest, DiffIterateTypes);
+TYPED_TEST_CASE(DiffIterateTest, DiffIterateTypes);
 
 TYPED_TEST(DiffIterateTest, DiffIterate)
 {
@@ -5755,33 +5711,6 @@ TEST_F(TestLibRBD, UpdateFeatures)
     ASSERT_EQ(0, image.update_features(RBD_FEATURE_DEEP_FLATTEN, false));
   }
   ASSERT_EQ(-EINVAL, image.update_features(RBD_FEATURE_DEEP_FLATTEN, true));
-}
-
-TEST_F(TestLibRBD, FeaturesBitmaskString)
-{
-  librbd::RBD rbd;
-  uint64_t features = RBD_FEATURES_DEFAULT;
-
-  std::string features_str;
-  std::string expected_str = "deep-flatten,exclusive-lock,fast-diff,layering,object-map";
-  rbd.features_to_string(features, &features_str);
-  ASSERT_EQ(expected_str, features_str);
-
-  features = RBD_FEATURE_LAYERING;
-  features_str = "";
-  expected_str = "layering";
-  rbd.features_to_string(features, &features_str);
-  ASSERT_EQ(expected_str, features_str);
-
-  uint64_t features_bitmask;
-  features_str = "deep-flatten,exclusive-lock,fast-diff,layering,object-map";
-  rbd.features_from_string(features_str, &features_bitmask);
-  ASSERT_EQ(features_bitmask, RBD_FEATURES_DEFAULT);
-
-  features_str = "layering";
-  features_bitmask = 0;
-  rbd.features_from_string(features_str, &features_bitmask);
-  ASSERT_EQ(features_bitmask, RBD_FEATURE_LAYERING);
 }
 
 TEST_F(TestLibRBD, RebuildObjectMap)
@@ -7959,178 +7888,6 @@ TEST_F(TestLibRBD, ImageSpec) {
     }
   );
   ASSERT_EQ(expected_children, children);
-}
-
-void super_simple_write_cb_pp(librbd::completion_t cb, void *arg)
-{
-}
-
-TEST_F(TestLibRBD, DISABLED_TestSeqWriteAIOPP)
-{
-  librados::IoCtx ioctx;
-  ASSERT_EQ(0, _rados.ioctx_create(m_pool_name.c_str(), ioctx));
-
-  {
-    librbd::RBD rbd;
-    librbd::Image image;
-    int order = 21;
-    std::string name = get_temp_image_name();
-    uint64_t size = 5 * (1 << order);
-
-    ASSERT_EQ(0, create_image_pp(rbd, ioctx, name.c_str(), size, &order));
-    ASSERT_EQ(0, rbd.open(ioctx, image, name.c_str(), NULL));
-
-    char test_data[(TEST_IO_SIZE + 1) * 10];
-
-    for (int i = 0; i < 10; i++) {
-      for (uint64_t j = 0; j < TEST_IO_SIZE; j++) {
-        test_data[(TEST_IO_SIZE + 1) * i + j] = (char)(rand() % (126 - 33) + 33);
-      }
-      test_data[(TEST_IO_SIZE + 1) * i + TEST_IO_SIZE] = '\0';
-    }
-
-    struct timespec start_time;
-    clock_gettime(CLOCK_REALTIME, &start_time);
-
-    std::list<librbd::RBD::AioCompletion *> comps;
-    for (uint64_t i = 0; i < size / TEST_IO_SIZE; ++i) {
-      char *p = test_data + (TEST_IO_SIZE + 1) * (i % 10);
-      ceph::bufferlist bl;
-      bl.append(p, strlen(p));
-      auto comp = new librbd::RBD::AioCompletion(
-          NULL, (librbd::callback_t) super_simple_write_cb_pp);
-      image.aio_write(strlen(p) * i, strlen(p), bl, comp);
-      comps.push_back(comp);
-      if (i % 1000 == 0) {
-        cout << i << " reqs sent" << std::endl;
-        image.flush();
-        for (auto comp : comps) {
-          comp->wait_for_complete();
-          ASSERT_EQ(0, comp->get_return_value());
-          comp->release();
-        }
-        comps.clear();
-      }
-    }
-    int i = 0;
-    for (auto comp : comps) {
-      comp->wait_for_complete();
-      ASSERT_EQ(0, comp->get_return_value());
-      comp->release();
-      if (i % 1000 == 0) {
-        std::cout << i << " reqs completed" << std::endl;
-      }
-      i++;
-    }
-    comps.clear();
-
-    struct timespec end_time;
-    clock_gettime(CLOCK_REALTIME, &end_time);
-    int duration = end_time.tv_sec * 1000 + end_time.tv_nsec / 1000000 -
-      start_time.tv_sec * 1000 - start_time.tv_nsec / 1000000;
-    std::cout << "duration: " << duration << " msec" << std::endl;
-
-    for (uint64_t i = 0; i < size / TEST_IO_SIZE; ++i) {
-      char *p = test_data + (TEST_IO_SIZE + 1) * (i % 10);
-      ASSERT_PASSED(read_test_data, image, p, strlen(p) * i, TEST_IO_SIZE, 0);
-    }
-
-    ASSERT_PASSED(validate_object_map, image);
-  }
-
-  ioctx.close();
-}
-
-TEST_F(TestLibRBD, SnapRemoveWithChildMissing)
-{
-  REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
-  ASSERT_EQ(0, rados_conf_set(_cluster, "rbd_default_clone_format", "2"));
-  BOOST_SCOPE_EXIT_ALL(&) {
-    ASSERT_EQ(0, rados_conf_set(_cluster, "rbd_default_clone_format", "auto"));
-  };
-
-  librbd::RBD rbd;
-  rados_ioctx_t ioctx1, ioctx2;
-  string pool_name1 = create_pool(true);
-  rados_ioctx_create(_cluster, pool_name1.c_str(), &ioctx1);
-  ASSERT_EQ(0, rados_ioctx_create(_cluster, m_pool_name.c_str(), &ioctx2));
-
-  bool old_format;
-  uint64_t features;
-  rbd_image_t parent, child1, child2, child3;
-  int order = 0;
-  char child_id1[4096];
-  char child_id2[4096];
-  char child_id3[4096];
-
-  ASSERT_EQ(0, get_features(&old_format, &features));
-  ASSERT_FALSE(old_format);
-  std::string parent_name = get_temp_image_name();
-  std::string child_name1 = get_temp_image_name();
-  std::string child_name2 = get_temp_image_name();
-  std::string child_name3 = get_temp_image_name();
-  ASSERT_EQ(0, create_image_full(ioctx1, parent_name.c_str(), 4<<20, &order,
-            false, features));
-  ASSERT_EQ(0, rbd_open(ioctx1, parent_name.c_str(), &parent, NULL));
-  ASSERT_EQ(0, rbd_snap_create(parent, "snap1"));
-  ASSERT_EQ(0, rbd_snap_create(parent, "snap2"));
-
-  ASSERT_EQ(0, clone_image(ioctx1, parent, parent_name.c_str(), "snap1",
-                           ioctx2, child_name1.c_str(), features, &order));
-  ASSERT_EQ(0, clone_image(ioctx1, parent, parent_name.c_str(), "snap2",
-                           ioctx1, child_name2.c_str(), features, &order));
-  ASSERT_EQ(0, clone_image(ioctx1, parent, parent_name.c_str(), "snap2",
-                           ioctx2, child_name3.c_str(), features, &order));
-
-  ASSERT_EQ(0, rbd_open(ioctx2, child_name1.c_str(), &child1, NULL));
-  ASSERT_EQ(0, rbd_open(ioctx1, child_name2.c_str(), &child2, NULL));
-  ASSERT_EQ(0, rbd_open(ioctx2, child_name3.c_str(), &child3, NULL));
-  ASSERT_EQ(0, rbd_get_id(child1, child_id1, sizeof(child_id1)));
-  ASSERT_EQ(0, rbd_get_id(child2, child_id2, sizeof(child_id2)));
-  ASSERT_EQ(0, rbd_get_id(child3, child_id3, sizeof(child_id3)));
-  test_list_children2(parent, 3,
-                      child_id1, m_pool_name.c_str(), child_name1.c_str(), false,
-                      child_id2, pool_name1.c_str(), child_name2.c_str(), false,
-                      child_id3, m_pool_name.c_str(), child_name3.c_str(), false);
-
-  size_t max_size = 10;
-  rbd_linked_image_spec_t children[max_size];
-  ASSERT_EQ(0, rbd_list_children3(parent, children, &max_size));
-  ASSERT_EQ(3, static_cast<int>(max_size));
-  rbd_linked_image_spec_list_cleanup(children, max_size);
-
-  ASSERT_EQ(0, rbd_close(child1));
-  ASSERT_EQ(0, rbd_close(child2));
-  ASSERT_EQ(0, rbd_close(child3));
-  rados_ioctx_destroy(ioctx2);
-  ASSERT_EQ(0, rados_pool_delete(_cluster, m_pool_name.c_str()));
-  _pool_names.erase(std::remove(_pool_names.begin(),
-                                _pool_names.end(), m_pool_name),
-                    _pool_names.end());
-  EXPECT_EQ(0, rados_wait_for_latest_osdmap(_cluster));
-
-  ASSERT_EQ(0, rbd_list_children3(parent, children, &max_size));
-  ASSERT_EQ(3, static_cast<int>(max_size));
-  rbd_linked_image_spec_list_cleanup(children, max_size);
-  ASSERT_EQ(0, rbd_snap_remove(parent, "snap1"));
-  ASSERT_EQ(0, rbd_list_children3(parent, children, &max_size));
-  ASSERT_EQ(2, static_cast<int>(max_size));
-  rbd_linked_image_spec_list_cleanup(children, max_size);
-
-  ASSERT_EQ(0, rbd_remove(ioctx1, child_name2.c_str()));
-  ASSERT_EQ(0, rbd_list_children3(parent, children, &max_size));
-  ASSERT_EQ(1, static_cast<int>(max_size));
-  rbd_linked_image_spec_list_cleanup(children, max_size);
-
-  ASSERT_EQ(0, rbd_snap_remove(parent, "snap2"));
-  ASSERT_EQ(0, rbd_list_children3(parent, children, &max_size));
-  ASSERT_EQ(0, static_cast<int>(max_size));
-  rbd_linked_image_spec_list_cleanup(children, max_size);
-  test_list_children2(parent, 0);
-  ASSERT_EQ(0, test_ls_snaps(parent, 0));
-
-  ASSERT_EQ(0, rbd_close(parent));
-  rados_ioctx_destroy(ioctx1);
 }
 
 // poorman's ceph_assert()

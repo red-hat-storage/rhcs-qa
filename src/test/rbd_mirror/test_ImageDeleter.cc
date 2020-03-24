@@ -19,7 +19,6 @@
 #include "tools/rbd_mirror/ImageDeleter.h"
 #include "tools/rbd_mirror/ServiceDaemon.h"
 #include "tools/rbd_mirror/Threads.h"
-#include "tools/rbd_mirror/Throttler.h"
 #include "tools/rbd_mirror/Types.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/ImageState.h"
@@ -43,7 +42,6 @@
 using rbd::mirror::RadosRef;
 using rbd::mirror::TestFixture;
 using namespace librbd;
-using cls::rbd::MirrorImageMode;
 using cls::rbd::MirrorImageState;
 
 
@@ -58,18 +56,13 @@ public:
   void SetUp() override {
     TestFixture::SetUp();
 
-    m_image_deletion_throttler.reset(
-        new rbd::mirror::Throttler<>(g_ceph_context,
-                                     "rbd_mirror_concurrent_image_deletions"));
-
     m_service_daemon.reset(new rbd::mirror::ServiceDaemon<>(g_ceph_context,
                                                             _rados, m_threads));
 
     librbd::api::Mirror<>::mode_set(m_local_io_ctx, RBD_MIRROR_MODE_IMAGE);
 
-    m_deleter = new rbd::mirror::ImageDeleter<>(
-        m_local_io_ctx, m_threads, m_image_deletion_throttler.get(),
-        m_service_daemon.get());
+    m_deleter = new rbd::mirror::ImageDeleter<>(m_local_io_ctx, m_threads,
+                                                m_service_daemon.get());
 
     m_local_image_id = librbd::util::generate_image_id(m_local_io_ctx);
     librbd::ImageOptions image_opts;
@@ -80,8 +73,7 @@ public:
                                 m_remote_mirror_uuid, true));
 
     cls::rbd::MirrorImage mirror_image(
-      MirrorImageMode::MIRROR_IMAGE_MODE_JOURNAL, GLOBAL_IMAGE_ID,
-      MirrorImageState::MIRROR_IMAGE_STATE_ENABLED);
+      GLOBAL_IMAGE_ID, MirrorImageState::MIRROR_IMAGE_STATE_ENABLED);
     EXPECT_EQ(0, cls_client::mirror_image_set(&m_local_io_ctx, m_local_image_id,
                                               mirror_image));
   }
@@ -166,7 +158,7 @@ public:
                                   false);
     EXPECT_EQ(0, ictx->state->open(0));
     {
-      std::unique_lock image_locker{ictx->image_lock};
+      RWLock::WLocker snap_locker(ictx->snap_lock);
       ictx->set_journal_policy(new librbd::journal::DisabledPolicy());
     }
 
@@ -186,7 +178,7 @@ public:
                                   false);
     EXPECT_EQ(0, ictx->state->open(0));
     {
-      std::unique_lock image_locker{ictx->image_lock};
+      RWLock::WLocker snap_locker(ictx->snap_lock);
       ictx->set_journal_policy(new librbd::journal::DisabledPolicy());
     }
 
@@ -206,8 +198,7 @@ public:
                                GLOBAL_CLONE_IMAGE_ID, m_remote_mirror_uuid));
 
     cls::rbd::MirrorImage mirror_image(
-      MirrorImageMode::MIRROR_IMAGE_MODE_JOURNAL, GLOBAL_CLONE_IMAGE_ID,
-      MirrorImageState::MIRROR_IMAGE_STATE_ENABLED);
+      GLOBAL_CLONE_IMAGE_ID, MirrorImageState::MIRROR_IMAGE_STATE_ENABLED);
     EXPECT_EQ(0, cls_client::mirror_image_set(&m_local_io_ctx, clone_id,
                                               mirror_image));
     EXPECT_EQ(0, ictx->state->close());
@@ -234,7 +225,6 @@ public:
 
   librbd::RBD rbd;
   std::string m_local_image_id;
-  std::unique_ptr<rbd::mirror::Throttler<>> m_image_deletion_throttler;
   std::unique_ptr<rbd::mirror::ServiceDaemon<>> m_service_daemon;
   rbd::mirror::ImageDeleter<> *m_deleter;
 };

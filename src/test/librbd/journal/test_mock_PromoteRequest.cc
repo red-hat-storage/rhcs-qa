@@ -33,7 +33,7 @@ struct OpenRequest<MockTestImageCtx> {
   static OpenRequest *s_instance;
   static OpenRequest *create(MockTestImageCtx *image_ctx,
                              ::journal::MockJournalerProxy *journaler,
-                             ceph::mutex *lock, ImageClientMeta *client_meta,
+                             Mutex *lock, ImageClientMeta *client_meta,
                              uint64_t *tag_tid, journal::TagData *tag_data,
                              Context *on_finish) {
     ceph_assert(s_instance != nullptr);

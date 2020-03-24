@@ -70,8 +70,8 @@ public:
 
   int m_max_in_flight;
   std::atomic<int> m_in_flight = { 0 };
-  ceph::mutex m_finished_lock = ceph::make_mutex("Finished Lock");
-  ceph::condition_variable m_finished_cond;
+  Mutex m_finished_lock;
+  Cond m_finished_cond;
 
   void rebuild_id_vec() {
     m_collections_ids.clear();
@@ -82,15 +82,15 @@ public:
   }
 
   void wait_for_ready() {
-    std::unique_lock locker{m_finished_lock};
-    m_finished_cond.wait(locker, [this] {
-      return m_max_in_flight <= 0 || m_in_flight < m_max_in_flight;
-    });
+    Mutex::Locker locker(m_finished_lock);
+    while ((m_max_in_flight > 0) && (m_in_flight >= m_max_in_flight))
+      m_finished_cond.Wait(m_finished_lock);
   }
 
   void wait_for_done() {
-    std::unique_lock locker{m_finished_lock};
-    m_finished_cond.wait(locker, [this] { return m_in_flight == 0; });
+    Mutex::Locker locker(m_finished_lock);
+    while (m_in_flight)
+      m_finished_cond.Wait(m_finished_lock);
   }
 
   void set_max_in_flight(int max) {
@@ -112,7 +112,7 @@ public:
  public:
   explicit TestObjectStoreState(ObjectStore *store) :
     m_next_coll_nr(0), m_num_objs_per_coll(10), m_num_objects(0),
-    m_max_in_flight(0), m_next_pool(2) {
+    m_max_in_flight(0), m_finished_lock("Finished Lock"), m_next_pool(2) {
     m_store.reset(store);
   }
   ~TestObjectStoreState() { 
@@ -147,9 +147,9 @@ public:
     explicit C_OnFinished(TestObjectStoreState *state) : m_state(state) { }
 
     void finish(int r) override {
-      std::lock_guard locker{m_state->m_finished_lock};
+      Mutex::Locker locker(m_state->m_finished_lock);
       m_state->dec_in_flight();
-      m_state->m_finished_cond.notify_all();
+      m_state->m_finished_cond.Signal();
 
     }
   };

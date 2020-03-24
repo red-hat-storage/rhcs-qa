@@ -385,15 +385,14 @@ TEST(CephArgParse, env_to_vec) {
     clear_g_str_vec();
     env_to_vec(args);
     EXPECT_EQ(3u, args.size());
-    EXPECT_EQ(string("b"), args[0]);
-    EXPECT_EQ(string("c"), args[1]);
-    EXPECT_EQ(string("a"), args[2]);
+    EXPECT_EQ(string("b"), args[1]);
+    EXPECT_EQ(string("c"), args[2]);
     setenv("WHATEVER", "d e", 0);
     clear_g_str_vec();
     env_to_vec(args, "WHATEVER");
     EXPECT_EQ(5u, args.size());
-    EXPECT_EQ(string("d"), args[0]);
-    EXPECT_EQ(string("e"), args[1]);
+    EXPECT_EQ(string("d"), args[3]);
+    EXPECT_EQ(string("e"), args[4]);
   }
   {
     std::vector<const char*> args;
@@ -405,11 +404,11 @@ TEST(CephArgParse, env_to_vec) {
     clear_g_str_vec();
     env_to_vec(args);
     EXPECT_EQ(5u, args.size());
-    EXPECT_EQ(string("b"), args[0]);
-    EXPECT_EQ(string("a"), args[1]);
+    EXPECT_EQ(string("a"), args[0]);
+    EXPECT_EQ(string("b"), args[1]);
     EXPECT_EQ(string("--"), args[2]);
-    EXPECT_EQ(string("d"), args[3]);
-    EXPECT_EQ(string("c"), args[4]);
+    EXPECT_EQ(string("c"), args[3]);
+    EXPECT_EQ(string("d"), args[4]);
   }
   {
     std::vector<const char*> args;
@@ -420,8 +419,8 @@ TEST(CephArgParse, env_to_vec) {
     clear_g_str_vec();
     env_to_vec(args);
     EXPECT_EQ(4u, args.size());
-    EXPECT_EQ(string("b"), args[0]);
-    EXPECT_EQ(string("a"), args[1]);
+    EXPECT_EQ(string("a"), args[0]);
+    EXPECT_EQ(string("b"), args[1]);
     EXPECT_EQ(string("--"), args[2]);
     EXPECT_EQ(string("c"), args[3]);
   }
@@ -436,8 +435,8 @@ TEST(CephArgParse, env_to_vec) {
     EXPECT_EQ(4u, args.size());
     EXPECT_EQ(string("b"), args[0]);
     EXPECT_EQ(string("--"), args[1]);
-    EXPECT_EQ(string("d"), args[2]);
-    EXPECT_EQ(string("c"), args[3]);
+    EXPECT_EQ(string("c"), args[2]);
+    EXPECT_EQ(string("d"), args[3]);
   }
   {
     std::vector<const char*> args;
@@ -447,8 +446,8 @@ TEST(CephArgParse, env_to_vec) {
     clear_g_str_vec();
     env_to_vec(args);
     EXPECT_EQ(4u, args.size());
-    EXPECT_EQ(string("c"), args[0]);
-    EXPECT_EQ(string("b"), args[1]);
+    EXPECT_EQ(string("b"), args[0]);
+    EXPECT_EQ(string("c"), args[1]);
     EXPECT_EQ(string("--"), args[2]);
     EXPECT_EQ(string("d"), args[3]);
   }
@@ -464,8 +463,8 @@ TEST(CephArgParse, env_to_vec) {
     EXPECT_EQ(4u, args.size());
     EXPECT_EQ(string("a"), args[0]);
     EXPECT_EQ(string("--"), args[1]);
-    EXPECT_EQ(string("d"), args[2]);
-    EXPECT_EQ(string("c"), args[3]);
+    EXPECT_EQ(string("c"), args[2]);
+    EXPECT_EQ(string("d"), args[3]);
   }
   {
     std::vector<const char*> args;
@@ -477,8 +476,8 @@ TEST(CephArgParse, env_to_vec) {
     clear_g_str_vec();
     env_to_vec(args);
     EXPECT_EQ(4u, args.size());
-    EXPECT_EQ(string("d"), args[0]);
-    EXPECT_EQ(string("a"), args[1]);
+    EXPECT_EQ(string("a"), args[0]);
+    EXPECT_EQ(string("d"), args[1]);
     EXPECT_EQ(string("--"), args[2]);
     EXPECT_EQ(string("c"), args[3]);
   }

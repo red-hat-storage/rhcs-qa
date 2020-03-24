@@ -200,26 +200,24 @@ function TEST_utf8_cli() {
     # the fix for http://tracker.ceph.com/issues/7387.  If it turns out
     # to not be OK (when is the default encoding *not* UTF-8?), maybe
     # the character '黄' can be replaced with the escape $'\xe9\xbb\x84'
-    OLDLANG="$LANG"
-    export LANG=en_US.UTF-8
     ceph osd pool create 黄 16 || return 1
     ceph osd lspools 2>&1 | \
         grep "黄" || return 1
     ceph -f json-pretty osd dump | \
-        python3 -c "import json; import sys; json.load(sys.stdin)" || return 1
+        python -c "import json; import sys; json.load(sys.stdin)" || return 1
     ceph osd pool delete 黄 黄 --yes-i-really-really-mean-it
-    export LANG="$OLDLANG"
 }
 
 function TEST_pool_create_rep_expected_num_objects() {
     local dir=$1
     setup $dir || return 1
 
+    # disable pg dir merge
+    CEPH_ARGS+="--osd-objectstore=filestore"
     export CEPH_ARGS
     run_mon $dir a || return 1
     run_mgr $dir x || return 1
-    # disable pg dir merge
-    run_osd_filestore $dir 0 || return 1
+    run_osd $dir 0 || return 1
 
     ceph osd pool create rep_expected_num_objects 64 64 replicated  replicated_rule 100000 || return 1
     # wait for pg dir creating

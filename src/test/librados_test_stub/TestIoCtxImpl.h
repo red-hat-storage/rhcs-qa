@@ -99,8 +99,7 @@ public:
                      const SnapContext &snapc) = 0;
   virtual int assert_exists(const std::string &oid) = 0;
 
-  virtual int create(const std::string& oid, bool exclusive,
-                     const SnapContext &snapc) = 0;
+  virtual int create(const std::string& oid, bool exclusive) = 0;
   virtual int exec(const std::string& oid, TestClassHandler *handler,
                    const char *cls, const char *method,
                    bufferlist& inbl, bufferlist* outbl,
@@ -146,7 +145,6 @@ public:
   virtual int set_alloc_hint(const std::string& oid,
                              uint64_t expected_object_size,
                              uint64_t expected_write_size,
-                             uint32_t flags,
                              const SnapContext &snapc);
   virtual void set_snap_read(snap_t seq);
   virtual int sparse_read(const std::string& oid, uint64_t off, uint64_t len,

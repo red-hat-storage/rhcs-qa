@@ -1,8 +1,7 @@
-#include <iostream>
+#include "include/buffer.h"
 #include <seastar/core/app-template.hh>
 #include <seastar/core/future-util.hh>
 #include <seastar/core/reactor.hh>
-#include "include/buffer.h"
 
 // allocate a foreign buffer on each cpu, collect them all into a bufferlist,
 // and destruct it on this cpu

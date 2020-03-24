@@ -4,7 +4,6 @@
     user create                create a new user
     user modify                modify user
     user info                  get user info
-    user rename                rename user
     user rm                    remove user
     user suspend               suspend a user
     user enable                re-enable user after suspension
@@ -26,7 +25,6 @@
     bucket stats               returns bucket statistics
     bucket rm                  remove bucket
     bucket check               check bucket index
-    bucket chown               link bucket to specified user and update its object ACLs
     bucket reshard             reshard bucket
     bucket rewrite             rewrite all objects in the specified bucket
     bucket sync disable        disable bucket sync
@@ -71,7 +69,7 @@
     zonegroup add              add a zone to a zonegroup
     zonegroup create           create a new zone group info
     zonegroup default          set default zone group
-    zonegroup delete           delete a zone group info
+    zonegroup rm               remove a zone group info
     zonegroup get              show zone group info
     zonegroup modify           modify an existing zonegroup
     zonegroup set              set zone group info (requires infile)
@@ -79,7 +77,6 @@
     zonegroup rename           rename a zone group
     zonegroup list             list all zone groups set on this cluster
     zonegroup placement list   list zonegroup's placement targets
-    zonegroup placement get    get a placement target of a specific zonegroup
     zonegroup placement add    add a placement target id to a zonegroup
     zonegroup placement modify modify a placement target of a specific zonegroup
     zonegroup placement rm     remove a placement target from a zonegroup
@@ -92,7 +89,6 @@
     zone list                  list all zones set on this cluster
     zone rename                rename a zone
     zone placement list        list zone's placement targets
-    zone placement get         get a zone placement target
     zone placement add         add a zone placement target
     zone placement modify      modify a zone placement target
     zone placement rm          remove a zone placement target
@@ -133,7 +129,6 @@
     mdlog status               read metadata log status
     bilog list                 list bucket index log
     bilog trim                 trim bucket index log (use start-marker, end-marker)
-    bilog status               read bucket index log status
     datalog list               list data log
     datalog trim               trim data log
     datalog status             read data log status
@@ -167,7 +162,6 @@
   options:
      --tenant=<tenant>         tenant name
      --uid=<id>                user id
-     --new-uid=<id>            new user id
      --subuser=<name>          subuser name
      --access-key=<key>        S3 access key
      --email=<email>           user's email address
@@ -187,13 +181,10 @@
      --bucket=<bucket>         Specify the bucket name. Also used by the quota command.
      --pool=<pool>             Specify the pool name. Also used to scan for leaked rados objects.
      --object=<object>         object name
-     --object-version=<version>         object version
      --date=<date>             date in the format yyyy-mm-dd
      --start-date=<date>       start date in the format yyyy-mm-dd
      --end-date=<date>         end date in the format yyyy-mm-dd
      --bucket-id=<bucket-id>   bucket id
-     --bucket-new-name=<bucket>
-                               for bucket link: optional new name
      --shard-id=<shard-id>     optional for: 
                                  mdlog list
                                  data sync status
@@ -245,7 +236,6 @@
                                set list of zones to sync from
      --sync-from-rm=[zone-name][,...]
                                remove zones from list of zones to sync from
-     --bucket-index-max-shards override a zone/zonegroup's default bucket index shard count
      --fix                     besides checking bucket index, will also fix it
      --check-objects           bucket check: rebuilds bucket index according to
                                actual objects state
@@ -267,7 +257,6 @@
      --infile=<file>           specify a file to read in when setting data
      --categories=<list>       comma separated list of categories, used in usage show
      --caps=<caps>             list of caps (e.g., "usage=read, write; user=read")
-     --op-mask=<op-mask>       permission of user's operations (e.g., "read, write, delete, *")
      --yes-i-really-mean-it    required for certain operations
      --warnings-only           when specified with bucket limit check, list
                                only buckets nearing or over the current max
@@ -281,7 +270,6 @@
      --min-rewrite-stripe-size min stripe size for object rewrite (default 0)
      --trim-delay-ms           time interval in msec to limit the frequency of sync error log entries trimming operations,
                                the trimming process will sleep the specified msec for every 1000 entries trimmed
-     --max-concurrent-ios      maximum concurrent ios for bucket operations (default: 32)
   
   <date> := "YYYY-MM-DD[ hh:mm:ss]"
   
@@ -294,6 +282,7 @@
      --num-shards              num of shards to use for keeping the temporary scan info
      --orphan-stale-secs       num of seconds to wait before declaring an object to be an orphan (default: 86400)
      --job-id                  set the job id (for orphans find)
+     --max-concurrent-ios      maximum concurrent ios for orphans find (default: 32)
      --detail                  detailed mode, log and stat head objects as well
   
   Orphans list-jobs options:

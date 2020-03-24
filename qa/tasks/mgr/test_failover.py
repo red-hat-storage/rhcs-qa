@@ -12,7 +12,6 @@ class TestFailover(MgrTestCase):
     MGRS_REQUIRED = 2
 
     def setUp(self):
-        super(TestFailover, self).setUp()
         self.setup_mgrs()
 
     def test_timeout(self):

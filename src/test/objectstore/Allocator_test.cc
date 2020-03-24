@@ -8,6 +8,7 @@
 #include <boost/scoped_ptr.hpp>
 #include <gtest/gtest.h>
 
+#include "common/Mutex.h"
 #include "common/Cond.h"
 #include "common/errno.h"
 #include "include/stringify.h"
@@ -16,6 +17,8 @@
 
 #include <boost/random/uniform_int.hpp>
 typedef boost::mt11213b gen_type;
+
+#if GTEST_HAS_PARAM_TEST
 
 class AllocTest : public ::testing::TestWithParam<const char*> {
 
@@ -66,7 +69,6 @@ TEST_P(AllocTest, test_alloc_min_alloc)
    * Allocate extent and make sure all comes in single extent.
    */   
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 4);
     PExtentVector extents;
     EXPECT_EQ(4*block_size,
@@ -80,7 +82,6 @@ TEST_P(AllocTest, test_alloc_min_alloc)
    * Allocate extent and make sure we get two different extents.
    */
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 2);
     alloc->init_add_free(3 * block_size, block_size * 2);
     PExtentVector extents;
@@ -107,7 +108,6 @@ TEST_P(AllocTest, test_alloc_min_max_alloc)
    * min_alloc_size == max_alloc_size
    */
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 4);
     PExtentVector extents;
     EXPECT_EQ(4*block_size,
@@ -125,7 +125,6 @@ TEST_P(AllocTest, test_alloc_min_max_alloc)
    * when max alloc size > min_alloc size
    */
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 4);
     PExtentVector extents;
     EXPECT_EQ(4*block_size,
@@ -141,7 +140,6 @@ TEST_P(AllocTest, test_alloc_min_max_alloc)
    * Make sure allocations are of min_alloc_size when min_alloc_size > block_size.
    */
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 1024);
     PExtentVector extents;
     EXPECT_EQ(1024 * block_size,
@@ -158,7 +156,6 @@ TEST_P(AllocTest, test_alloc_min_max_alloc)
    * Allocate and free.
    */
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 16);
     PExtentVector extents;
     EXPECT_EQ(16 * block_size,
@@ -177,8 +174,8 @@ TEST_P(AllocTest, test_alloc_failure)
   int64_t block_size = 1024;
   int64_t capacity = 4 * 1024 * block_size;
 
+  init_alloc(capacity, block_size);
   {
-    init_alloc(capacity, block_size);
     alloc->init_add_free(0, block_size * 256);
     alloc->init_add_free(block_size * 512, block_size * 256);
 
@@ -228,16 +225,6 @@ TEST_P(AllocTest, test_alloc_non_aligned_len)
   EXPECT_EQ(want_size, alloc->allocate(want_size, alloc_unit, 0, &extents));
 }
 
-TEST_P(AllocTest, test_alloc_39334)
-{
-  uint64_t block = 0x4000;
-  uint64_t size = 0x5d00000000;
-
-  init_alloc(size, block);
-  alloc->init_add_free(0x4000, 0x5cffffc000);
-  EXPECT_EQ(size - block, alloc->get_free());
-}
-
 TEST_P(AllocTest, test_alloc_fragmentation)
 {
   uint64_t capacity = 4 * 1024 * 1024;
@@ -249,7 +236,7 @@ TEST_P(AllocTest, test_alloc_fragmentation)
   alloc->init_add_free(0, capacity);
   bool bitmap_alloc = GetParam() == std::string("bitmap");
   
-  EXPECT_EQ(0.0, alloc->get_fragmentation());
+  EXPECT_EQ(0.0, alloc->get_fragmentation(alloc_unit));
 
   for (size_t i = 0; i < capacity / alloc_unit; ++i)
   {
@@ -261,15 +248,10 @@ TEST_P(AllocTest, test_alloc_fragmentation)
     // bitmap fragmentation calculation doesn't provide such constant
     // estimate
     if (!bitmap_alloc) {
-      EXPECT_EQ(0.0, alloc->get_fragmentation());
+      EXPECT_EQ(0.0, alloc->get_fragmentation(alloc_unit));
     }
   }
   EXPECT_EQ(-ENOSPC, alloc->allocate(want_size, alloc_unit, 0, 0, &tmp));
-
-  if (GetParam() == string("avl")) {
-    // AVL allocator uses a different allocating strategy
-    GTEST_SKIP() << "skipping for AVL allocator";
-  }
 
   for (size_t i = 0; i < allocated.size(); i += 2)
   {
@@ -277,9 +259,7 @@ TEST_P(AllocTest, test_alloc_fragmentation)
     release_set.insert(allocated[i].offset, allocated[i].length);
     alloc->release(release_set);
   }
-  EXPECT_EQ(1.0, alloc->get_fragmentation());
-  EXPECT_EQ(66u, uint64_t(alloc->get_fragmentation_score() * 100));
-
+  EXPECT_EQ(1.0, alloc->get_fragmentation(alloc_unit));
   for (size_t i = 1; i < allocated.size() / 2; i += 2)
   {
     interval_set<uint64_t> release_set;
@@ -288,12 +268,11 @@ TEST_P(AllocTest, test_alloc_fragmentation)
   }
   if (bitmap_alloc) {
     // fragmentation = one l1 slot is free + one l1 slot is partial
-    EXPECT_EQ(50U, uint64_t(alloc->get_fragmentation() * 100));
+    EXPECT_EQ(50U, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
   } else {
     // fragmentation approx = 257 intervals / 768 max intervals
-    EXPECT_EQ(33u, uint64_t(alloc->get_fragmentation() * 100));
+    EXPECT_EQ(33u, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
   }
-  EXPECT_EQ(27u, uint64_t(alloc->get_fragmentation_score() * 100));
 
   for (size_t i = allocated.size() / 2 + 1; i < allocated.size(); i += 2)
   {
@@ -305,75 +284,7 @@ TEST_P(AllocTest, test_alloc_fragmentation)
   // extents that causes some minor fragmentation (minor bug or by-design behavior?).
   // Hence leaving just two 
   // digits after decimal point due to this.
-  EXPECT_EQ(0u, uint64_t(alloc->get_fragmentation() * 100));
-  if (bitmap_alloc) {
-    EXPECT_EQ(0u, uint64_t(alloc->get_fragmentation_score() * 100));
-  } else {
-    EXPECT_EQ(11u, uint64_t(alloc->get_fragmentation_score() * 100));
-  }
-}
-
-TEST_P(AllocTest, test_dump_fragmentation_score)
-{
-  uint64_t capacity = 1024 * 1024 * 1024;
-  uint64_t one_alloc_max = 2 * 1024 * 1024;
-  uint64_t alloc_unit = 4096;
-  uint64_t want_size = alloc_unit;
-  uint64_t rounds = 10;
-  uint64_t actions_per_round = 1000;
-  PExtentVector allocated, tmp;
-  gen_type rng;
-
-  init_alloc(capacity, alloc_unit);
-  alloc->init_add_free(0, capacity);
-
-  EXPECT_EQ(0.0, alloc->get_fragmentation());
-  EXPECT_EQ(0.0, alloc->get_fragmentation_score());
-
-  uint64_t allocated_cnt = 0;
-  for (size_t round = 0; round < rounds ; round++) {
-    for (size_t j = 0; j < actions_per_round ; j++) {
-      //free or allocate ?
-      if ( rng() % capacity >= allocated_cnt ) {
-	//allocate
-	want_size = ( rng() % one_alloc_max ) / alloc_unit * alloc_unit + alloc_unit;
-	tmp.clear();
-	uint64_t r = alloc->allocate(want_size, alloc_unit, 0, 0, &tmp);
-	for (auto& t: tmp) {
-	  if (t.length > 0)
-	    allocated.push_back(t);
-	}
-	allocated_cnt += r;
-      } else {
-	//free
-	ceph_assert(allocated.size() > 0);
-	size_t item = rng() % allocated.size();
-	ceph_assert(allocated[item].length > 0);
-	allocated_cnt -= allocated[item].length;
-	interval_set<uint64_t> release_set;
-	release_set.insert(allocated[item].offset, allocated[item].length);
-	alloc->release(release_set);
-	std::swap(allocated[item], allocated[allocated.size() - 1]);
-	allocated.resize(allocated.size() - 1);
-      }
-    }
-
-    size_t free_sum = 0;
-    auto iterated_allocation = [&](size_t off, size_t len) {
-      ceph_assert(len > 0);
-      free_sum += len;
-    };
-    alloc->dump(iterated_allocation);
-    EXPECT_GT(1, alloc->get_fragmentation_score());
-    EXPECT_EQ(capacity, free_sum + allocated_cnt);
-  }
-
-  for (size_t i = 0; i < allocated.size(); i ++)
-  {
-    interval_set<uint64_t> release_set;
-    release_set.insert(allocated[i].offset, allocated[i].length);
-    alloc->release(release_set);
-  }
+  EXPECT_EQ(0u, uint64_t(alloc->get_fragmentation(alloc_unit) * 100));
 }
 
 TEST_P(AllocTest, test_alloc_bug_24598)
@@ -402,9 +313,9 @@ TEST_P(AllocTest, test_alloc_bug_24598)
 
   EXPECT_EQ(static_cast<int64_t>(want_size),
 	    alloc->allocate(want_size, 0x100000, 0, 0, &tmp));
-  EXPECT_EQ(1u, tmp.size());
   EXPECT_EQ(0x4b00000u, tmp[0].offset);
   EXPECT_EQ(0x200000u, tmp[0].length);
+  EXPECT_EQ(1u, tmp.size());
 }
 
 //Verifies issue from
@@ -417,7 +328,7 @@ TEST_P(AllocTest, test_alloc_big2)
   int64_t mas = 1024*1024;
   init_alloc(blocks*block_size, block_size);
   alloc->init_add_free(0, blocks * block_size);
-
+  
   PExtentVector extents;
   uint64_t need = block_size * blocks / 4; // 2GB
   EXPECT_EQ(need,
@@ -428,25 +339,12 @@ TEST_P(AllocTest, test_alloc_big2)
   EXPECT_TRUE(extents[0].length > 0);
 }
 
-//Verifies stuck 4GB chunk allocation
-//in StupidAllocator
-//
-TEST_P(AllocTest, test_alloc_big3)
-{
-  int64_t block_size = 4096;
-  int64_t blocks = 1048576 * 2;
-  int64_t mas = 1024*1024;
-  init_alloc(blocks*block_size, block_size);
-  alloc->init_add_free(0, blocks * block_size);
-
-  PExtentVector extents;
-  uint64_t need = block_size * blocks / 2; // 4GB
-  EXPECT_EQ(need,
-      alloc->allocate(need, mas, 0, &extents));
-  EXPECT_TRUE(extents[0].length > 0);
-}
-
-INSTANTIATE_TEST_SUITE_P(
+INSTANTIATE_TEST_CASE_P(
   Allocator,
   AllocTest,
-  ::testing::Values("stupid", "bitmap", "avl"));
+  ::testing::Values("stupid", "bitmap"));
+
+#else
+
+TEST(DummyTest, ValueParameterizedTestsAreNotSupportedOnThisPlatform) {}
+#endif

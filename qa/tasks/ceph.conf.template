@@ -13,11 +13,10 @@
 	ms die on old message = true
 	ms die on bug = true
 
+	mon pg warn min per osd = 1
+	mon pg warn max per osd = 10000   # <= luminous
 	mon max pg per osd = 10000        # >= luminous
 	mon pg warn max object skew = 0
-
-	# disable pg_autoscaler by default for new pools
-        osd_pool_default_pg_autoscale_mode = off
 
 	osd pool default size = 2
 
@@ -27,10 +26,6 @@
 	mon warn on crush straw calc version zero = false
 	mon warn on no sortbitwise = false
 	mon warn on osd down out interval zero = false
-	mon warn on too few osds = false
-	mon_warn_on_pool_pg_num_not_power_of_two = false
-        mon_warn_on_pool_no_redundancy = false
-	mon_allow_pool_size_one = true
 
         osd pool default erasure code profile = "plugin=jerasure technique=reed_sol_van k=2 m=1 ruleset-failure-domain=osd crush-failure-domain=osd"
 
@@ -76,7 +71,6 @@
 	debug auth = 20
 	mon reweight min pgs per osd = 4
 	mon reweight min bytes per osd = 10
-	mgr/telemetry/nag = false
 
 [mon]
 	debug ms = 1

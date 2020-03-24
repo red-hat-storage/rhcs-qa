@@ -84,14 +84,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, Success) {
   }
   expect_remove_map(ictx, snap_id, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -114,14 +113,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, LoadMapMissing) {
 
   expect_load_map(ictx, snap_id, -ENOENT);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -129,7 +127,7 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, LoadMapMissing) {
   {
     // shouldn't invalidate the HEAD revision when we fail to load
     // the already deleted snapshot
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     uint64_t flags;
     ASSERT_EQ(0, ictx->get_flags(CEPH_NOSNAP, &flags));
     ASSERT_EQ(0U, flags & RBD_FLAG_OBJECT_MAP_INVALID);
@@ -151,14 +149,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, LoadMapError) {
   expect_invalidate(ictx);
   expect_remove_map(ictx, snap_id, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -179,14 +176,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, RemoveSnapshotMissing) {
   expect_remove_snapshot(ictx, -ENOENT);
   expect_remove_map(ictx, snap_id, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -208,14 +204,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, RemoveSnapshotError) {
   expect_invalidate(ictx);
   expect_remove_map(ictx, snap_id, 0);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -238,14 +233,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, RemoveMapMissing) {
   }
   expect_remove_map(ictx, snap_id, -ENOENT);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx.wait());
@@ -268,14 +262,13 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, RemoveMapError) {
   }
   expect_remove_map(ictx, snap_id, -EINVAL);
 
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
   ceph::BitVector<2> object_map;
   C_SaferCond cond_ctx;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx);
+    *ictx, &object_map, snap_id, &cond_ctx);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(-EINVAL, cond_ctx.wait());
@@ -291,23 +284,21 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, ScrubCleanObjects) {
   librbd::NoOpProgressContext prog_ctx;
   uint64_t size = 4294967296; // 4GB = 1024 * 4MB
   ASSERT_EQ(0, resize(ictx, size));
-
-  // update image objectmap for snap inherit
-  ceph::shared_mutex object_map_lock = ceph::make_shared_mutex("lock");
+  
+  // update image objectmap for snap inherit 
   ceph::BitVector<2> object_map;
   object_map.resize(1024);
   for (uint64_t i = 512; i < object_map.size(); ++i) {
     object_map[i] = i % 2 == 0 ? OBJECT_EXISTS : OBJECT_NONEXISTENT;
   }
-
+  
   C_SaferCond cond_ctx1;
   {
-    librbd::ObjectMap<> *om = new librbd::ObjectMap<>(*ictx, ictx->snap_id);
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
-    om->set_object_map(object_map);
-    om->aio_save(&cond_ctx1);
-    om->put();
+    librbd::ObjectMap om(*ictx, ictx->snap_id);
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
+    om.set_object_map(object_map);
+    om.aio_save(&cond_ctx1);
   }
   ASSERT_EQ(0, cond_ctx1.wait());
   ASSERT_EQ(0, snap_create(*ictx, "snap1"));
@@ -321,10 +312,10 @@ TEST_F(TestMockObjectMapSnapshotRemoveRequest, ScrubCleanObjects) {
   C_SaferCond cond_ctx2;
   uint64_t snap_id = ictx->snap_info.rbegin()->first;
   AsyncRequest<> *request = new SnapshotRemoveRequest(
-    *ictx, &object_map_lock, &object_map, snap_id, &cond_ctx2);
+    *ictx, &object_map, snap_id, &cond_ctx2);
   {
-    std::shared_lock owner_locker{ictx->owner_lock};
-    std::unique_lock image_locker{ictx->image_lock};
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    RWLock::WLocker snap_locker(ictx->snap_lock);
     request->send();
   }
   ASSERT_EQ(0, cond_ctx2.wait());

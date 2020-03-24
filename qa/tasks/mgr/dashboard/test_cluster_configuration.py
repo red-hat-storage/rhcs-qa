@@ -314,6 +314,9 @@ class ClusterConfigurationTest(DashboardTestCase):
             'osd_deep_scrub_randomize_ratio',  # osd-pg-scrub
             'osd_deep_scrub_stride',  # osd-pg-scrub
             'osd_deep_scrub_update_digest_min_age',  # osd-pg-scrub
+            'osd_op_queue_mclock_scrub_lim',  # osd-pg-scrub
+            'osd_op_queue_mclock_scrub_res',  # osd-pg-scrub
+            'osd_op_queue_mclock_scrub_wgt',  # osd-pg-scrub
             'osd_requested_scrub_priority',  # osd-pg-scrub
             'osd_scrub_backoff_ratio',  # osd-pg-scrub
             'osd_scrub_chunk_max',  # osd-pg-scrub
@@ -343,7 +346,7 @@ class ClusterConfigurationTest(DashboardTestCase):
         self.assertIn('services', data)
         self.assertIn('type', data)
         self.assertIn('desc', data)
-        self.assertIn(data['type'], ['str', 'bool', 'float', 'int', 'size', 'uint', 'addr', 'addrvec', 'uuid',
+        self.assertIn(data['type'], ['str', 'bool', 'float', 'int', 'size', 'uint', 'addr', 'uuid',
                                      'secs'])
 
         if 'value' in data:

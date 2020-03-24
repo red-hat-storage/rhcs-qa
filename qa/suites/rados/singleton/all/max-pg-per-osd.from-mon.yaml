@@ -10,8 +10,6 @@ openstack:
 overrides:
   ceph:
     create_rbd_pool: False
-    pre-mgr-commands:
-      - sudo ceph config set mgr mgr/devicehealth/enable_monitoring false --force
     conf:
       mon:
         osd pool default size: 2

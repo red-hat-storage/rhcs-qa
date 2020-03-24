@@ -1,5 +1,5 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
-#include "common/ceph_mutex.h"
+#include "common/Mutex.h"
 #include "common/Cond.h"
 #include "include/rados/librados.hpp"
 
@@ -10,9 +10,9 @@ class TestOp;
 
 class TestOpStat {
 public:
-  mutable ceph::mutex stat_lock = ceph::make_mutex("TestOpStat lock");
+  mutable Mutex stat_lock;
 
-  TestOpStat() = default;
+  TestOpStat() : stat_lock("TestOpStat lock") {}
     
   static uint64_t gettime()
   {

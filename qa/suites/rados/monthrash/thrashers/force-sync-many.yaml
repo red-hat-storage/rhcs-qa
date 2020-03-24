@@ -8,5 +8,5 @@ tasks:
 - mon_thrash:
     revive_delay: 90
     thrash_delay: 1
-    store_thrash: true
+    thrash_store: true
     thrash_many: true

@@ -18,9 +18,7 @@
 #include "rgw/rgw_dmclock_async_scheduler.h"
 
 #include <optional>
-#ifdef HAVE_BOOST_CONTEXT
 #include <boost/asio/spawn.hpp>
-#endif
 #include <gtest/gtest.h>
 #include "acconfig.h"
 #include "global/global_context.h"

@@ -81,7 +81,7 @@ namespace mirror {
 template <>
 struct Threads<librbd::MockTestImageCtx> {
   MockSafeTimer *timer;
-  ceph::mutex &timer_lock;
+  Mutex &timer_lock;
 
   MockContextWQ *work_queue;
 
@@ -122,8 +122,7 @@ public:
   typedef librbd::TrashWatcher<librbd::MockTestImageCtx> LibrbdTrashWatcher;
 
   struct MockListener : TrashListener {
-    MOCK_METHOD2(handle_trash_image, void(const std::string&,
-					  const ceph::real_clock::time_point&));
+    MOCK_METHOD2(handle_trash_image, void(const std::string&, const utime_t&));
   };
 
   void expect_work_queue(MockThreads &mock_threads) {
@@ -152,7 +151,7 @@ public:
   }
 
   void expect_create_trash(librados::IoCtx &io_ctx, int r) {
-    EXPECT_CALL(get_mock_io_ctx(io_ctx), create(RBD_TRASH, false, _))
+    EXPECT_CALL(get_mock_io_ctx(io_ctx), create(RBD_TRASH, false))
       .WillOnce(Return(r));
   }
 
@@ -180,8 +179,8 @@ public:
     EXPECT_CALL(*mock_threads.timer, add_event_after(_, _))
       .WillOnce(DoAll(WithArg<1>(Invoke([this](Context *ctx) {
                         auto wrapped_ctx =
-			  new LambdaContext([this, ctx](int r) {
-			      std::lock_guard timer_locker{m_threads->timer_lock};
+			  new FunctionContext([this, ctx](int r) {
+			      Mutex::Locker timer_locker(m_threads->timer_lock);
 			      ctx->complete(r);
 			    });
 			m_threads->work_queue->queue(wrapped_ctx, 0);

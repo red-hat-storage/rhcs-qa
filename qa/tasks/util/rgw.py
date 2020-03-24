@@ -1,13 +1,19 @@
-from io import BytesIO
+from cStringIO import StringIO
 import logging
 import json
+import requests
 import time
 
+from requests.packages.urllib3 import PoolManager
+from requests.packages.urllib3.util import Retry
+from urlparse import urlparse
+
+from teuthology.orchestra.connection import split_user
 from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
 
-def rgwadmin(ctx, client, cmd, stdin=BytesIO(), check_status=False,
+def rgwadmin(ctx, client, cmd, stdin=StringIO(), check_status=False,
              format='json', decode=True, log_level=logging.DEBUG):
     log.info('rgwadmin: {client} : {cmd}'.format(client=client,cmd=cmd))
     testdir = teuthology.get_testdir(ctx)
@@ -15,9 +21,9 @@ def rgwadmin(ctx, client, cmd, stdin=BytesIO(), check_status=False,
     client_with_id = daemon_type + '.' + client_id
     pre = [
         'adjust-ulimits',
-        'ceph-coverage',
+        'ceph-coverage'.format(tdir=testdir),
         '{tdir}/archive/coverage'.format(tdir=testdir),
-        'radosgw-admin',
+        'radosgw-admin'.format(tdir=testdir),
         '--log-to-stderr',
         '--format', format,
         '-n',  client_with_id,
@@ -25,12 +31,12 @@ def rgwadmin(ctx, client, cmd, stdin=BytesIO(), check_status=False,
         ]
     pre.extend(cmd)
     log.log(log_level, 'rgwadmin: cmd=%s' % pre)
-    (remote,) = ctx.cluster.only(client).remotes.keys()
+    (remote,) = ctx.cluster.only(client).remotes.iterkeys()
     proc = remote.run(
         args=pre,
         check_status=check_status,
-        stdout=BytesIO(),
-        stderr=BytesIO(),
+        stdout=StringIO(),
+        stderr=StringIO(),
         stdin=stdin,
         )
     r = proc.exitstatus
@@ -81,9 +87,9 @@ def wait_for_radosgw(url, remote):
         proc = remote.run(
             args=curl_cmd,
             check_status=False,
-            stdout=BytesIO(),
-            stderr=BytesIO(),
-            stdin=BytesIO(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            stdin=StringIO(),
             )
         exit_status = proc.exitstatus
         if exit_status == 0:

@@ -22,6 +22,7 @@
   bar
   baz
   foo
+  global
   nobar
   thud
 
@@ -29,6 +30,7 @@
   bar
   baz
   foo
+  global
   nobar
   thud
 
@@ -36,6 +38,7 @@
   bar
   baz
   foo
+  global
   nobar
   thud
 

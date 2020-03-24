@@ -37,3 +37,4 @@ class SummaryTest(DashboardTestCase):
         self.assertIsNotNone(data['health_status'])
         self.assertIsNotNone(data['mgr_id'])
         self.assertIsNotNone(data['have_mon_connection'])
+

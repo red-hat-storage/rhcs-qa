@@ -14,7 +14,6 @@
 #include "librbd/internal.h"
 #include "librbd/Journal.h"
 #include "librbd/Operations.h"
-#include "librbd/api/Snapshot.h"
 #include "librbd/io/AioCompletion.h"
 #include "librbd/io/ImageDispatchSpec.h"
 #include "librbd/io/ImageRequest.h"
@@ -31,7 +30,7 @@ public:
   int when_acquired_lock(librbd::ImageCtx *ictx) {
     C_SaferCond lock_ctx;
     {
-      std::unique_lock owner_locker{ictx->owner_lock};
+      RWLock::WLocker owner_locker(ictx->owner_lock);
       ictx->exclusive_lock->acquire_lock(&lock_ctx);
     }
     int r = lock_ctx.wait();
@@ -49,7 +48,7 @@ public:
     C_SaferCond ctx;
     librbd::journal::EventEntry event_entry(event);
     {
-      std::shared_lock owner_locker{ictx->owner_lock};
+      RWLock::RLocker owner_locker(ictx->owner_lock);
       uint64_t tid = ictx->journal->append_io_event(std::move(event_entry),0, 0,
                                                     true, 0);
       ictx->journal->wait_event(tid, &ctx);
@@ -66,8 +65,7 @@ public:
     C_SaferCond close_cond;
     ictx->journal->close(&close_cond);
     ASSERT_EQ(0, close_cond.wait());
-
-    ictx->journal->put();
+    delete ictx->journal;
     ictx->journal = nullptr;
 
     C_SaferCond cond;
@@ -330,7 +328,7 @@ TEST_F(TestJournalReplay, SnapCreate) {
   ASSERT_EQ(1, current_entry);
 
   {
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     ASSERT_NE(CEPH_NOSNAP, ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(),
 					     "snap"));
   }
@@ -375,7 +373,7 @@ TEST_F(TestJournalReplay, SnapProtect) {
   ASSERT_EQ(initial_entry + 2, current_entry);
 
   bool is_protected;
-  ASSERT_EQ(0, librbd::api::Snapshot<>::is_protected(ictx, "snap", &is_protected));
+  ASSERT_EQ(0, librbd::snap_is_protected(ictx, "snap", &is_protected));
   ASSERT_TRUE(is_protected);
 
   // verify lock ordering constraints
@@ -397,7 +395,7 @@ TEST_F(TestJournalReplay, SnapUnprotect) {
 					     "snap"));
   uint64_t snap_id;
   {
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     snap_id = ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(), "snap");
     ASSERT_NE(CEPH_NOSNAP, snap_id);
   }
@@ -428,7 +426,7 @@ TEST_F(TestJournalReplay, SnapUnprotect) {
   ASSERT_EQ(initial_entry + 2, current_entry);
 
   bool is_protected;
-  ASSERT_EQ(0, librbd::api::Snapshot<>::is_protected(ictx, "snap", &is_protected));
+  ASSERT_EQ(0, librbd::snap_is_protected(ictx, "snap", &is_protected));
   ASSERT_FALSE(is_protected);
 
   // verify lock ordering constraints
@@ -452,7 +450,7 @@ TEST_F(TestJournalReplay, SnapRename) {
 					     "snap"));
   uint64_t snap_id;
   {
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     snap_id = ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(), "snap");
     ASSERT_NE(CEPH_NOSNAP, snap_id);
   }
@@ -480,7 +478,7 @@ TEST_F(TestJournalReplay, SnapRename) {
   ASSERT_EQ(0, ictx->state->refresh());
 
   {
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     snap_id = ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(), "snap2");
     ASSERT_NE(CEPH_NOSNAP, snap_id);
   }
@@ -565,7 +563,7 @@ TEST_F(TestJournalReplay, SnapRemove) {
   ASSERT_EQ(initial_entry + 2, current_entry);
 
   {
-    std::shared_lock image_locker{ictx->image_lock};
+    RWLock::RLocker snap_locker(ictx->snap_lock);
     uint64_t snap_id = ictx->get_snap_id(cls::rbd::UserSnapshotNamespace(),
 					 "snap");
     ASSERT_EQ(CEPH_NOSNAP, snap_id);

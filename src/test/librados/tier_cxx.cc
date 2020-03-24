@@ -45,7 +45,7 @@ void flush_evict_all(librados::Rados& cluster, librados::IoCtx& cache_ioctx)
       cache_ioctx.aio_operate(
         it->get_oid(), completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL);
-      completion->wait_for_complete();
+      completion->wait_for_safe();
       completion->get_return_value();
       completion->release();
     }
@@ -56,37 +56,11 @@ void flush_evict_all(librados::Rados& cluster, librados::IoCtx& cache_ioctx)
       cache_ioctx.aio_operate(
         it->get_oid(), completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL);
-      completion->wait_for_complete();
+      completion->wait_for_safe();
       completion->get_return_value();
       completion->release();
     }
   }
-}
-
-static string _get_required_osd_release(Rados& cluster)
-{
-  bufferlist inbl;
-  string cmd = string("{\"prefix\": \"osd dump\",\"format\":\"json\"}");
-  bufferlist outbl;
-  int r = cluster.mon_command(cmd, inbl, &outbl, NULL);
-  ceph_assert(r >= 0);
-  string outstr(outbl.c_str(), outbl.length());
-  json_spirit::Value v;
-  if (!json_spirit::read(outstr, v)) {
-    cerr <<" unable to parse json " << outstr << std::endl;
-    return "";
-  }
-
-  json_spirit::Object& o = v.get_obj();
-  for (json_spirit::Object::size_type i=0; i<o.size(); i++) {
-    json_spirit::Pair& p = o[i];
-    if (p.name_ == "require_osd_release") {
-      cout << "require_osd_release = " << p.value_.get_str() << std::endl;
-      return p.value_.get_str();
-    }
-  }
-  cerr << "didn't find require_osd_release in " << outstr << std::endl;
-  return "";
 }
 
 class LibRadosTwoPoolsPP : public RadosTestPP
@@ -274,7 +248,7 @@ TEST_F(LibRadosTwoPoolsPP, Overlay) {
     ASSERT_EQ(0, ioctx.aio_operate(
 	"foo", completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
     ASSERT_EQ('b', bl[0]);
@@ -633,12 +607,10 @@ TEST_F(LibRadosTwoPoolsPP, PromoteSnapTrimRace) {
 
   ioctx.snap_set_read(my_snaps[0]);
 
-  // read foo snap.  the OSD may or may not realize that this snap has
-  // been logically deleted; either response is valid.
+  // read foo snap
   {
     bufferlist bl;
-    int r = ioctx.read("foo", bl, 1, 0);
-    ASSERT_TRUE(r == 1 || r == -ENOENT);
+    ASSERT_EQ(-ENOENT, ioctx.read("foo", bl, 1, 0));
   }
 
   // cleanup
@@ -714,7 +686,7 @@ TEST_F(LibRadosTwoPoolsPP, Whiteout) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("bar", completion, &op,
 				   librados::OPERATION_IGNORE_CACHE));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
 
@@ -845,7 +817,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -858,7 +830,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op,
 					 librados::OPERATION_IGNORE_CACHE,
 					 NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -869,7 +841,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -882,7 +854,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -906,7 +878,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op,
 					 librados::OPERATION_IGNORE_CACHE,
 					 NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -917,7 +889,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -928,7 +900,7 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -1036,7 +1008,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bam", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1048,7 +1020,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bam", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -1069,7 +1041,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1082,7 +1054,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -1096,7 +1068,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1124,7 +1096,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -1138,7 +1110,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1152,7 +1124,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1163,7 +1135,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1228,7 +1200,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap2) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1242,7 +1214,7 @@ TEST_F(LibRadosTwoPoolsPP, EvictSnap2) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op,
 				   librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -1354,7 +1326,7 @@ TEST_F(LibRadosTwoPoolsPP, ListSnap){
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1367,7 +1339,7 @@ TEST_F(LibRadosTwoPoolsPP, ListSnap){
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -1383,7 +1355,7 @@ TEST_F(LibRadosTwoPoolsPP, ListSnap){
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       0, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, snap_ret);
     ASSERT_LT(0u, snap_set.clones.size());
     for (vector<librados::clone_info_t>::const_iterator r = snap_set.clones.begin();
@@ -1460,7 +1432,7 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1474,7 +1446,7 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -1485,7 +1457,7 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1499,7 +1471,7 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1531,7 +1503,7 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1607,7 +1579,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1621,7 +1593,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -1632,7 +1604,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1645,7 +1617,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1677,7 +1649,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1710,7 +1682,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1722,7 +1694,7 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1819,7 +1791,7 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -1832,7 +1804,7 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -1845,7 +1817,7 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1858,7 +1830,7 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1871,7 +1843,7 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -1988,8 +1960,8 @@ TEST_F(LibRadosTierPP, FlushWriteRaces) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion2, &op2, 0));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -2022,8 +1994,8 @@ TEST_F(LibRadosTierPP, FlushWriteRaces) {
       librados::AioCompletion *completion2 = cluster.aio_create_completion();
       ASSERT_EQ(0, ioctx.aio_operate("foo", completion2, &op2, 0));
 
-      completion->wait_for_complete();
-      completion2->wait_for_complete();
+      completion->wait_for_safe();
+      completion2->wait_for_safe();
       int r = completion->get_return_value();
       ASSERT_TRUE(r == -EBUSY || r == 0);
       ASSERT_EQ(0, completion2->get_return_value());
@@ -2098,8 +2070,8 @@ TEST_F(LibRadosTwoPoolsPP, FlushTryFlushRaces) {
       "foo", completion2, &op2,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -2132,8 +2104,8 @@ TEST_F(LibRadosTwoPoolsPP, FlushTryFlushRaces) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -2169,8 +2141,8 @@ TEST_F(LibRadosTwoPoolsPP, FlushTryFlushRaces) {
         "foo", completion2, &op2,
 	librados::OPERATION_IGNORE_OVERLAY, NULL));
 
-      completion->wait_for_complete();
-      completion2->wait_for_complete();
+      completion->wait_for_safe();
+      completion2->wait_for_safe();
       int r = completion->get_return_value();
       ASSERT_TRUE(r == -EBUSY || r == 0);
       ASSERT_EQ(0, completion2->get_return_value());
@@ -2210,8 +2182,8 @@ TEST_F(LibRadosTwoPoolsPP, FlushTryFlushRaces) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -2221,8 +2193,8 @@ TEST_F(LibRadosTwoPoolsPP, FlushTryFlushRaces) {
 
 
 IoCtx *read_ioctx = 0;
-ceph::mutex test_lock = ceph::make_mutex("FlushReadRaces::lock");
-ceph::condition_variable cond;
+Mutex test_lock("FlushReadRaces::lock");
+Cond cond;
 int max_reads = 100;
 int num_reads = 0; // in progress
 
@@ -2241,13 +2213,14 @@ void start_flush_read()
 void flush_read_race_cb(completion_t cb, void *arg)
 {
   //cout << " finished read" << std::endl;
-  std::lock_guard l{test_lock};
+  test_lock.Lock();
   if (num_reads > max_reads) {
     num_reads--;
-    cond.notify_all();
+    cond.Signal();
   } else {
     start_flush_read();
   }
+  test_lock.Unlock();
 }
 
 TEST_F(LibRadosTwoPoolsPP, TryFlushReadRace) {
@@ -2284,12 +2257,12 @@ TEST_F(LibRadosTwoPoolsPP, TryFlushReadRace) {
 
   // start a continuous stream of reads
   read_ioctx = &ioctx;
-  test_lock.lock();
+  test_lock.Lock();
   for (int i = 0; i < max_reads; ++i) {
     start_flush_read();
     num_reads++;
   }
-  test_lock.unlock();
+  test_lock.Unlock();
 
   // try-flush
   ObjectReadOperation op;
@@ -2300,14 +2273,16 @@ TEST_F(LibRadosTwoPoolsPP, TryFlushReadRace) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-  completion->wait_for_complete();
+  completion->wait_for_safe();
   ASSERT_EQ(0, completion->get_return_value());
   completion->release();
 
   // stop reads
-  std::unique_lock locker{test_lock};
-  max_reads = 0;  
-  cond.wait(locker, [] { return num_reads == 0;});
+  test_lock.Lock();
+  max_reads = 0;
+  while (num_reads > 0)
+    cond.Wait(test_lock);
+  test_lock.Unlock();
 }
 
 TEST_F(LibRadosTierPP, HitSetNone) {
@@ -2434,6 +2409,7 @@ static int _get_pg_num(Rados& cluster, string pool_name)
   cerr << "didn't find pg_num in " << outstr << std::endl;
   return -1;
 }
+
 
 TEST_F(LibRadosTwoPoolsPP, HitSetWrite) {
   int num_pg = _get_pg_num(cluster, pool_name);
@@ -2851,7 +2827,7 @@ TEST_F(LibRadosTwoPoolsPP, CachePin) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -2860,7 +2836,7 @@ TEST_F(LibRadosTwoPoolsPP, CachePin) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("baz", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -2956,7 +2932,7 @@ TEST_F(LibRadosTwoPoolsPP, SetRedirectRead) {
     op.set_redirect("bar", cache_ioctx, 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -2978,8 +2954,16 @@ TEST_F(LibRadosTwoPoolsPP, SetRedirectRead) {
 
 TEST_F(LibRadosTwoPoolsPP, SetChunkRead) {
   // skip test if not yet mimic
-  if (_get_required_osd_release(cluster) < "mimic") {
-    GTEST_SKIP() << "cluster is not yet mimic, skipping test";
+  {
+    bufferlist inbl, outbl;
+    ASSERT_EQ(0, cluster.mon_command(
+		"{\"prefix\": \"osd dump\"}",
+		inbl, &outbl, NULL));
+    string s(outbl.c_str(), outbl.length());
+    if (s.find("mimic") == std::string::npos) {
+      cout << "cluster is not yet mimic, skipping test" << std::endl;
+      return;
+    }
   }
 
   // create object
@@ -3016,7 +3000,7 @@ TEST_F(LibRadosTwoPoolsPP, SetChunkRead) {
     }
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3048,8 +3032,16 @@ TEST_F(LibRadosTwoPoolsPP, SetChunkRead) {
 
 TEST_F(LibRadosTwoPoolsPP, ManifestPromoteRead) {
   // skip test if not yet mimic
-  if (_get_required_osd_release(cluster) < "mimic") {
-    GTEST_SKIP() << "cluster is not yet mimic, skipping test";
+  {
+    bufferlist inbl, outbl;
+    ASSERT_EQ(0, cluster.mon_command(
+		"{\"prefix\": \"osd dump\"}",
+		inbl, &outbl, NULL));
+    string s(outbl.c_str(), outbl.length());
+    if (s.find("mimic") == std::string::npos) {
+      cout << "cluster is not yet mimic, skipping test" << std::endl;
+      return;
+    }
   }
 
   // create object
@@ -3099,7 +3091,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestPromoteRead) {
     op.set_redirect("bar", cache_ioctx, 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3109,7 +3101,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestPromoteRead) {
     op.set_chunk(0, 2, cache_ioctx, "bar-chunk", 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3119,7 +3111,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestPromoteRead) {
     op.tier_promote();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3135,7 +3127,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestPromoteRead) {
     op.tier_promote();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3197,7 +3189,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestRefRead) {
     op.set_redirect("bar", cache_ioctx, 0, CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3207,7 +3199,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestRefRead) {
     op.set_chunk(0, 2, cache_ioctx, "bar-chunk", 0, CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3244,8 +3236,16 @@ TEST_F(LibRadosTwoPoolsPP, ManifestRefRead) {
 
 TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
   // skip test if not yet nautilus
-  if (_get_required_osd_release(cluster) < "nautilus") {
-    GTEST_SKIP() << "cluster is not yet nautilus, skipping test";
+  {
+    bufferlist inbl, outbl;
+    ASSERT_EQ(0, cluster.mon_command(
+		"{\"prefix\": \"osd dump\"}",
+		inbl, &outbl, NULL));
+    string s(outbl.c_str(), outbl.length());
+    if (s.find("nautilus") == std::string::npos) {
+      cout << "cluster is not yet nautilus, skipping test" << std::endl;
+      return;
+    }
   }
 
   // create object
@@ -3287,7 +3287,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
     op.set_redirect("bar", cache_ioctx, 0, CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3297,7 +3297,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
     op.set_chunk(0, 2, cache_ioctx, "bar-chunk", 0, CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3334,7 +3334,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
     op.unset_manifest();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3345,7 +3345,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
     op.unset_manifest();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3358,7 +3358,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
       op.unset_manifest();
       librados::AioCompletion *completion = cluster.aio_create_completion();
       ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-      completion->wait_for_complete();
+      completion->wait_for_safe();
       ASSERT_EQ(-EOPNOTSUPP, completion->get_return_value());
       completion->release();
     }
@@ -3372,7 +3372,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestUnset) {
       op.unset_manifest();
       librados::AioCompletion *completion = cluster.aio_create_completion();
       ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-      completion->wait_for_complete();
+      completion->wait_for_safe();
       ASSERT_EQ(-EOPNOTSUPP, completion->get_return_value());
       completion->release();
     }
@@ -3387,10 +3387,17 @@ using ceph::crypto::SHA1;
 #include "rgw/rgw_common.h"
 TEST_F(LibRadosTwoPoolsPP, ManifestDedupRefRead) {
   // skip test if not yet nautilus
-  if (_get_required_osd_release(cluster) < "nautilus") {
-    GTEST_SKIP() << "cluster is not yet nautilus, skipping test";
+  {
+    bufferlist inbl, outbl;
+    ASSERT_EQ(0, cluster.mon_command(
+		"{\"prefix\": \"osd dump\"}",
+		inbl, &outbl, NULL));
+    string s(outbl.c_str(), outbl.length());
+    if (s.find("nautilus") == std::string::npos) {
+      cout << "cluster is not yet nautilus, skipping test" << std::endl;
+      return;
+    }
   }
-
   bufferlist inbl;
   ASSERT_EQ(0, cluster.mon_command(
 	    set_pool_str(pool_name, "fingerprint_algorithm", "sha1"),
@@ -3438,7 +3445,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestDedupRefRead) {
 		CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-dedup", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3450,7 +3457,7 @@ TEST_F(LibRadosTwoPoolsPP, ManifestDedupRefRead) {
 		CEPH_OSD_OP_FLAG_WITH_REFERENCE);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -3507,93 +3514,6 @@ TEST_F(LibRadosTwoPoolsPP, ManifestDedupRefRead) {
     }
     ASSERT_EQ(2u, read_ret.refs.size());
   }
-
-  // wait for maps to settle before next test
-  cluster.wait_for_latest_osdmap();
-}
-
-TEST_F(LibRadosTwoPoolsPP, ManifestFlushRead) {
-  // skip test if not yet octopus 
-  if (_get_required_osd_release(cluster) < "octopus") {
-    GTEST_SKIP() << "cluster is not yet octopus, skipping test";
-  }
-
-  // create object
-  {
-    bufferlist bl;
-    bl.append("base chunk");
-    ObjectWriteOperation op;
-    op.write_full(bl);
-    ASSERT_EQ(0, ioctx.operate("foo-chunk", &op));
-  }
-  {
-    bufferlist bl;
-    bl.append("CHUNKS");
-    ObjectWriteOperation op;
-    op.write_full(bl);
-    ASSERT_EQ(0, cache_ioctx.operate("bar-chunk", &op));
-  }
-
-  // configure tier
-  bufferlist inbl;
-  ASSERT_EQ(0, cluster.mon_command(
-    "{\"prefix\": \"osd tier add\", \"pool\": \"" + pool_name +
-    "\", \"tierpool\": \"" + cache_pool_name +
-    "\", \"force_nonempty\": \"--force-nonempty\" }",
-    inbl, NULL, NULL));
-
-  // wait for maps to settle
-  cluster.wait_for_latest_osdmap();
-
-  // set-chunk
-  {
-    ObjectWriteOperation op;
-    op.set_chunk(0, 2, cache_ioctx, "bar-chunk", 0);
-    librados::AioCompletion *completion = cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
-    ASSERT_EQ(0, completion->get_return_value());
-    completion->release();
-  }
-  // set-chunk
-  {
-    ObjectWriteOperation op;
-    op.set_chunk(2, 2, cache_ioctx, "bar-chunk", 2);
-    librados::AioCompletion *completion = cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
-    ASSERT_EQ(0, completion->get_return_value());
-    completion->release();
-  }
-  // make chunked object dirty
-  {
-    bufferlist bl;
-    bl.append("DD");
-    ObjectWriteOperation op;
-    op.write(0, bl);
-    ASSERT_EQ(0, ioctx.operate("foo-chunk", &op));
-  }
-  // flush
-  {
-    ObjectWriteOperation op;
-    op.tier_flush();
-    librados::AioCompletion *completion = cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
-    ASSERT_EQ(0, completion->get_return_value());
-    completion->release();
-  }
-  // read and verify the chunked object
-  {
-    bufferlist bl;
-    ASSERT_EQ(1, cache_ioctx.read("bar-chunk", bl, 1, 0));
-    ASSERT_EQ('D', bl[0]);
-  }
-
-  ASSERT_EQ(0, cluster.mon_command(
-    "{\"prefix\": \"osd tier remove\", \"pool\": \"" + pool_name +
-    "\", \"tierpool\": \"" + cache_pool_name + "\"}",
-    inbl, NULL, NULL));
 
   // wait for maps to settle before next test
   cluster.wait_for_latest_osdmap();
@@ -3763,7 +3683,7 @@ TEST_F(LibRadosTwoPoolsECPP, Overlay) {
     ASSERT_EQ(0, ioctx.aio_operate(
 	"foo", completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
     ASSERT_EQ('b', bl[0]);
@@ -4043,12 +3963,10 @@ TEST_F(LibRadosTwoPoolsECPP, PromoteSnapTrimRace) {
 
   ioctx.snap_set_read(my_snaps[0]);
 
-  // read foo snap.  the OSD may or may not realize that this snap has
-  // been logically deleted; either response is valid.
+  // read foo snap
   {
     bufferlist bl;
-    int r = ioctx.read("foo", bl, 1, 0);
-    ASSERT_TRUE(r == 1 || r == -ENOENT);
+    ASSERT_EQ(-ENOENT, ioctx.read("foo", bl, 1, 0));
   }
 
   // cleanup
@@ -4124,7 +4042,7 @@ TEST_F(LibRadosTwoPoolsECPP, Whiteout) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("bar", completion, &op,
 				   librados::OPERATION_IGNORE_CACHE));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
 
@@ -4210,7 +4128,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4223,7 +4141,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op,
 					 librados::OPERATION_IGNORE_CACHE,
 					 NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -4234,7 +4152,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4247,7 +4165,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4271,7 +4189,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op,
 					 librados::OPERATION_IGNORE_CACHE,
 					 NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4282,7 +4200,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4293,7 +4211,7 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -4401,7 +4319,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bam", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4413,7 +4331,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "bam", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -4434,7 +4352,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4447,7 +4365,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-ENOENT, completion->get_return_value());
     completion->release();
   }
@@ -4461,7 +4379,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4489,7 +4407,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -4503,7 +4421,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4517,7 +4435,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4528,7 +4446,7 @@ TEST_F(LibRadosTwoPoolsECPP, EvictSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "bar", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4598,7 +4516,7 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4612,7 +4530,7 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -4623,7 +4541,7 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4637,7 +4555,7 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4669,7 +4587,7 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4733,7 +4651,7 @@ TEST_F(LibRadosTwoPoolsECPP, FailedFlush) {
     op.omap_set(omap);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4746,7 +4664,7 @@ TEST_F(LibRadosTwoPoolsECPP, FailedFlush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_NE(0, completion->get_return_value());
     completion->release();
   }
@@ -4790,7 +4708,7 @@ TEST_F(LibRadosTwoPoolsECPP, FailedFlush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4801,7 +4719,7 @@ TEST_F(LibRadosTwoPoolsECPP, FailedFlush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4882,7 +4800,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4896,7 +4814,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EPERM, completion->get_return_value());
     completion->release();
   }
@@ -4907,7 +4825,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     op.cache_unpin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4920,7 +4838,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4952,7 +4870,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4985,7 +4903,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -4997,7 +4915,7 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate(
 	 "foo", completion, &op, librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5094,7 +5012,7 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -5107,7 +5025,7 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(-EBUSY, completion->get_return_value());
     completion->release();
   }
@@ -5120,7 +5038,7 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5133,7 +5051,7 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5146,7 +5064,7 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_CACHE, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5264,8 +5182,8 @@ TEST_F(LibRadosTierECPP, FlushWriteRaces) {
     ASSERT_EQ(0, ioctx.aio_operate(
       "foo", completion2, &op2, 0));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -5298,8 +5216,8 @@ TEST_F(LibRadosTierECPP, FlushWriteRaces) {
       librados::AioCompletion *completion2 = cluster.aio_create_completion();
       ASSERT_EQ(0, ioctx.aio_operate("foo", completion2, &op2, 0));
 
-      completion->wait_for_complete();
-      completion2->wait_for_complete();
+      completion->wait_for_safe();
+      completion2->wait_for_safe();
       int r = completion->get_return_value();
       ASSERT_TRUE(r == -EBUSY || r == 0);
       ASSERT_EQ(0, completion2->get_return_value());
@@ -5374,8 +5292,8 @@ TEST_F(LibRadosTwoPoolsECPP, FlushTryFlushRaces) {
       "foo", completion2, &op2,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -5408,8 +5326,8 @@ TEST_F(LibRadosTwoPoolsECPP, FlushTryFlushRaces) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -5445,8 +5363,8 @@ TEST_F(LibRadosTwoPoolsECPP, FlushTryFlushRaces) {
         "foo", completion2, &op2,
 	librados::OPERATION_IGNORE_OVERLAY, NULL));
 
-      completion->wait_for_complete();
-      completion2->wait_for_complete();
+      completion->wait_for_safe();
+      completion2->wait_for_safe();
       int r = completion->get_return_value();
       ASSERT_TRUE(r == -EBUSY || r == 0);
       ASSERT_EQ(0, completion2->get_return_value());
@@ -5486,8 +5404,8 @@ TEST_F(LibRadosTwoPoolsECPP, FlushTryFlushRaces) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-    completion->wait_for_complete();
-    completion2->wait_for_complete();
+    completion->wait_for_safe();
+    completion2->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     ASSERT_EQ(0, completion2->get_return_value());
     completion->release();
@@ -5529,12 +5447,12 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlushReadRace) {
 
   // start a continuous stream of reads
   read_ioctx = &ioctx;
-  test_lock.lock();
+  test_lock.Lock();
   for (int i = 0; i < max_reads; ++i) {
     start_flush_read();
     num_reads++;
   }
-  test_lock.unlock();
+  test_lock.Unlock();
 
   // try-flush
   ObjectReadOperation op;
@@ -5545,14 +5463,16 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlushReadRace) {
       librados::OPERATION_IGNORE_OVERLAY |
       librados::OPERATION_SKIPRWLOCKS, NULL));
 
-  completion->wait_for_complete();
+  completion->wait_for_safe();
   ASSERT_EQ(0, completion->get_return_value());
   completion->release();
 
   // stop reads
-  std::unique_lock locker{test_lock};
-  max_reads = 0;  
-  cond.wait(locker, [] { return num_reads == 0;});
+  test_lock.Lock();
+  max_reads = 0;
+  while (num_reads > 0)
+    cond.Wait(test_lock);
+  test_lock.Unlock();
 }
 
 TEST_F(LibRadosTierECPP, CallForcesPromote) {
@@ -5618,7 +5538,7 @@ TEST_F(LibRadosTierECPP, CallForcesPromote) {
     ASSERT_EQ(0, cache_ioctx.aio_operate(
       "foo", completion, &op,
       librados::OPERATION_IGNORE_OVERLAY, NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5631,7 +5551,7 @@ TEST_F(LibRadosTierECPP, CallForcesPromote) {
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op,
 					 librados::OPERATION_IGNORE_CACHE,
 					 NULL));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -5669,7 +5589,7 @@ TEST_F(LibRadosTierECPP, CallForcesPromote) {
   cluster.wait_for_latest_osdmap();
 
   ASSERT_EQ(0, cluster.pool_delete(cache_pool_name.c_str()));
-  ASSERT_EQ(0, destroy_one_ec_pool_pp(pool_name, cluster));
+  ASSERT_EQ(0, destroy_one_pool_pp(pool_name, cluster));
 }
 
 TEST_F(LibRadosTierECPP, HitSetNone) {
@@ -6165,7 +6085,7 @@ TEST_F(LibRadosTwoPoolsECPP, CachePin) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6174,7 +6094,7 @@ TEST_F(LibRadosTwoPoolsECPP, CachePin) {
     op.cache_pin();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, cache_ioctx.aio_operate("baz", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6269,7 +6189,7 @@ TEST_F(LibRadosTwoPoolsECPP, SetRedirectRead) {
     op.set_redirect("bar", cache_ioctx, 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6323,7 +6243,7 @@ TEST_F(LibRadosTwoPoolsECPP, SetChunkRead) {
     op.set_chunk(0, 8, cache_ioctx, "bar", 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6401,7 +6321,7 @@ TEST_F(LibRadosTwoPoolsECPP, ManifestPromoteRead) {
     op.set_redirect("bar", cache_ioctx, 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6411,7 +6331,7 @@ TEST_F(LibRadosTwoPoolsECPP, ManifestPromoteRead) {
     op.set_chunk(0, 10, cache_ioctx, "bar-chunk", 0);
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6421,7 +6341,7 @@ TEST_F(LibRadosTwoPoolsECPP, ManifestPromoteRead) {
     op.tier_promote();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6437,7 +6357,7 @@ TEST_F(LibRadosTwoPoolsECPP, ManifestPromoteRead) {
     op.tier_promote();
     librados::AioCompletion *completion = cluster.aio_create_completion();
     ASSERT_EQ(0, ioctx.aio_operate("foo-chunk", completion, &op));
-    completion->wait_for_complete();
+    completion->wait_for_safe();
     ASSERT_EQ(0, completion->get_return_value());
     completion->release();
   }
@@ -6507,72 +6427,4 @@ TEST_F(LibRadosTwoPoolsPP, PropagateBaseTierError) {
   op2.omap_set({{"somekey", test_omap_bl}});
 
   ASSERT_EQ(-ECANCELED, ioctx.operate("propagate-base-tier-error", &op2));
-}
-
-TEST_F(LibRadosTwoPoolsPP, HelloWriteReturn) {
-  // configure cache
-  bufferlist inbl;
-  ASSERT_EQ(0, cluster.mon_command(
-    "{\"prefix\": \"osd tier add\", \"pool\": \"" + pool_name +
-    "\", \"tierpool\": \"" + cache_pool_name +
-    "\", \"force_nonempty\": \"--force-nonempty\" }",
-    inbl, NULL, NULL));
-  ASSERT_EQ(0, cluster.mon_command(
-    "{\"prefix\": \"osd tier set-overlay\", \"pool\": \"" + pool_name +
-    "\", \"overlaypool\": \"" + cache_pool_name + "\"}",
-    inbl, NULL, NULL));
-  ASSERT_EQ(0, cluster.mon_command(
-    "{\"prefix\": \"osd tier cache-mode\", \"pool\": \"" + cache_pool_name +
-    "\", \"mode\": \"writeback\"}",
-    inbl, NULL, NULL));
-
-  // set things up such that the op would normally be proxied
-  ASSERT_EQ(0, cluster.mon_command(
-	      set_pool_str(cache_pool_name, "hit_set_count", 2),
-	      inbl, NULL, NULL));
-  ASSERT_EQ(0, cluster.mon_command(
-	      set_pool_str(cache_pool_name, "hit_set_period", 600),
-	      inbl, NULL, NULL));
-  ASSERT_EQ(0, cluster.mon_command(
-	      set_pool_str(cache_pool_name, "hit_set_type",
-			   "explicit_object"),
-	      inbl, NULL, NULL));
-  ASSERT_EQ(0, cluster.mon_command(
-	      set_pool_str(cache_pool_name, "min_read_recency_for_promote",
-			   "10000"),
-	      inbl, NULL, NULL));
-
-  // wait for maps to settle
-  cluster.wait_for_latest_osdmap();
-
-  // this *will* return data due to the RETURNVEC flag
-  {
-    bufferlist in, out;
-    int rval;
-    ObjectWriteOperation o;
-    o.exec("hello", "write_return_data", in, &out, &rval);
-    librados::AioCompletion *completion = cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &o,
-				   librados::OPERATION_RETURNVEC));
-    completion->wait_for_complete();
-    ASSERT_EQ(42, completion->get_return_value());
-    ASSERT_EQ(42, rval);
-    out.hexdump(std::cout);
-    ASSERT_EQ("you might see this", std::string(out.c_str(), out.length()));
-  }
-
-  // this will overflow because the return data is too big
-  {
-    bufferlist in, out;
-    int rval;
-    ObjectWriteOperation o;
-    o.exec("hello", "write_too_much_return_data", in, &out, &rval);
-    librados::AioCompletion *completion = cluster.aio_create_completion();
-    ASSERT_EQ(0, ioctx.aio_operate("foo", completion, &o,
-				   librados::OPERATION_RETURNVEC));
-    completion->wait_for_complete();
-    ASSERT_EQ(-EOVERFLOW, completion->get_return_value());
-    ASSERT_EQ(-EOVERFLOW, rval);
-    ASSERT_EQ("", std::string(out.c_str(), out.length()));
-  }
 }

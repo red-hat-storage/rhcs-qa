@@ -1,11 +1,11 @@
 import json
 import logging
+import time
 import os
 from textwrap import dedent
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError
-from teuthology.misc import sudo_write_file
 
 log = logging.getLogger(__name__)
 
@@ -14,12 +14,11 @@ class TestVolumeClient(CephFSTestCase):
     # One for looking at the global filesystem, one for being
     # the VolumeClient, two for mounting the created shares
     CLIENTS_REQUIRED = 4
-    default_py_version = 'python3'
+    py_version = 'python'
 
     def setUp(self):
         CephFSTestCase.setUp(self)
-        self.py_version = self.ctx.config.get('overrides', {}).\
-                          get('python3', TestVolumeClient.default_py_version)
+        self.py_version = self.ctx.config.get('overrides', {}).get('python', 'python')
         log.info("using python version: {python_version}".format(
             python_version=self.py_version
         ))
@@ -34,8 +33,6 @@ class TestVolumeClient(CephFSTestCase):
         return client.run_python("""
 from __future__ import print_function
 from ceph_volume_client import CephFSVolumeClient, VolumePath
-from sys import version_info as sys_version_info
-from rados import OSError as rados_OSError
 import logging
 log = logging.getLogger("ceph_volume_client")
 log.addHandler(logging.StreamHandler())
@@ -48,6 +45,27 @@ vc.disconnect()
                    vol_prefix=vol_prefix, ns_prefix=ns_prefix),
         self.py_version)
 
+    def _sudo_write_file(self, remote, path, data):
+        """
+        Write data to a remote file as super user
+
+        :param remote: Remote site.
+        :param path: Path on the remote being written to.
+        :param data: Data to be written.
+
+        Both perms and owner are passed directly to chmod.
+        """
+        remote.run(
+            args=[
+                'sudo',
+                'python',
+                '-c',
+                'import shutil, sys; shutil.copyfileobj(sys.stdin, file(sys.argv[1], "wb"))',
+                path,
+            ],
+            stdin=data,
+        )
+
     def _configure_vc_auth(self, mount, id_name):
         """
         Set up auth credentials for the VolumeClient user
@@ -59,7 +77,7 @@ vc.disconnect()
             "mon", "allow *"
         )
         mount.client_id = id_name
-        sudo_write_file(mount.client_remote, mount.get_keyring_path(), out)
+        self._sudo_write_file(mount.client_remote, mount.get_keyring_path(), out)
         self.set_conf("client.{name}".format(name=id_name), "keyring", mount.get_keyring_path())
 
     def _configure_guest_auth(self, volumeclient_mount, guest_mount,
@@ -122,8 +140,9 @@ vc.disconnect()
             key=key
         ))
         guest_mount.client_id = guest_entity
-        sudo_write_file(guest_mount.client_remote,
-                        guest_mount.get_keyring_path(), keyring_txt)
+        self._sudo_write_file(guest_mount.client_remote,
+                              guest_mount.get_keyring_path(),
+                              keyring_txt)
 
         # Add a guest client section to the ceph config file.
         self.set_conf("client.{0}".format(guest_entity), "client quota", "True")
@@ -360,8 +379,33 @@ vc.disconnect()
         :return:
         """
 
+        # Because the teuthology config template sets mon_max_pg_per_osd to
+        # 10000 (i.e. it just tries to ignore health warnings), reset it to something
+        # sane before using volume_client, to avoid creating pools with absurdly large
+        # numbers of PGs.
+        self.set_conf("global", "mon max pg per osd", "300")
+        for mon_daemon_state in self.ctx.daemons.iter_daemons_of_role('mon'):
+            mon_daemon_state.restart()
+
         self.mount_b.umount_wait()
         self._configure_vc_auth(self.mount_b, "manila")
+
+        # Calculate how many PGs we'll expect the new volume pool to have
+        osd_map = json.loads(self.fs.mon_manager.raw_cluster_cmd('osd', 'dump', '--format=json-pretty'))
+        max_per_osd = int(self.fs.get_config('mon_max_pg_per_osd'))
+        osd_count = len(osd_map['osds'])
+        max_overall = osd_count * max_per_osd
+
+        existing_pg_count = 0
+        for p in osd_map['pools']:
+            existing_pg_count += p['pg_num']
+
+        expected_pg_num = (max_overall - existing_pg_count) / 10
+        log.info("max_per_osd {0}".format(max_per_osd))
+        log.info("osd_count {0}".format(osd_count))
+        log.info("max_overall {0}".format(max_overall))
+        log.info("existing_pg_count {0}".format(existing_pg_count))
+        log.info("expected_pg_num {0}".format(expected_pg_num))
 
         pools_a = json.loads(self.fs.mon_manager.raw_cluster_cmd("osd", "dump", "--format=json-pretty"))['pools']
 
@@ -369,7 +413,7 @@ vc.disconnect()
         volume_id = "volid"
         self._volume_client_python(self.mount_b, dedent("""
             vp = VolumePath("{group_id}", "{volume_id}")
-            vc.create_volume(vp, data_isolated=True)
+            vc.create_volume(vp, 10, data_isolated=True)
         """.format(
             group_id=group_id,
             volume_id=volume_id,
@@ -380,6 +424,12 @@ vc.disconnect()
         # Should have created one new pool
         new_pools = set(p['pool_name'] for p in pools_b) - set([p['pool_name'] for p in pools_a])
         self.assertEqual(len(new_pools), 1)
+
+        # It should have followed the heuristic for PG count
+        # (this is an overly strict test condition, so we may want to remove
+        #  it at some point as/when the logic gets fancier)
+        created_pg_num = self.fs.mon_manager.get_pool_property(list(new_pools)[0], "pg_num")
+        self.assertEqual(expected_pg_num, created_pg_num)
 
     def test_15303(self):
         """
@@ -638,7 +688,8 @@ vc.disconnect()
             volume_id=volume_id,
         )))
         # Check the list of authorized IDs for the volume.
-        self.assertEqual('None', auths)
+        expected_result = None
+        self.assertEqual(str(expected_result), auths)
 
         # Allow two auth IDs access to the volume.
         auths = self._volume_client_python(volumeclient_mount, dedent("""
@@ -675,7 +726,8 @@ vc.disconnect()
             guest_entity_2=guest_entity_2,
         )))
         # Check the list of authorized IDs for the volume.
-        self.assertEqual('None', auths)
+        expected_result = None
+        self.assertItemsEqual(str(expected_result), auths)
 
     def test_multitenant_volumes(self):
         """
@@ -939,59 +991,20 @@ vc.disconnect()
         self._configure_vc_auth(vc_mount, "manila")
 
         obj_data = 'test_data'
-        obj_name = 'test_vc_obj'
-        pool_name = self.fs.get_data_pool_names()[0]
-        self.fs.rados(['put', obj_name, '-'], pool=pool_name, stdin_data=obj_data)
-
-        self._volume_client_python(vc_mount, dedent("""
-            data, version_before = vc.get_object_and_version("{pool_name}", "{obj_name}")
-
-            if sys_version_info.major < 3:
-                data = data + 'modification1'
-            elif sys_version_info.major > 3:
-                data = str.encode(data.decode() + 'modification1')
-
-            vc.put_object_versioned("{pool_name}", "{obj_name}", data, version_before)
-            data, version_after = vc.get_object_and_version("{pool_name}", "{obj_name}")
-            assert version_after == version_before + 1
-        """).format(pool_name=pool_name, obj_name=obj_name))
-
-    def test_version_check_for_put_object_versioned(self):
-        vc_mount = self.mounts[1]
-        vc_mount.umount_wait()
-        self._configure_vc_auth(vc_mount, "manila")
-
-        obj_data = 'test_data'
         obj_name = 'test_vc_ob_2'
         pool_name = self.fs.get_data_pool_names()[0]
         self.fs.rados(['put', obj_name, '-'], pool=pool_name, stdin_data=obj_data)
 
         # Test if put_object_versioned() crosschecks the version of the
         # given object. Being a negative test, an exception is expected.
-        expected_exception = 'rados_OSError'
-        output = self._volume_client_python(vc_mount, dedent("""
-            data, version = vc.get_object_and_version("{pool_name}", "{obj_name}")
-
-            if sys_version_info.major < 3:
-                data = data + 'm1'
-            elif sys_version_info.major > 3:
-                data = str.encode(data.decode('utf-8') + 'm1')
-
-            vc.put_object("{pool_name}", "{obj_name}", data)
-
-            if sys_version_info.major < 3:
-                data = data + 'm2'
-            elif sys_version_info.major > 3:
-                data = str.encode(data.decode('utf-8') + 'm2')
-
-            try:
+        with self.assertRaises(CommandFailedError):
+            self._volume_client_python(vc_mount, dedent("""
+                data, version = vc.get_object_and_version("{pool_name}", "{obj_name}")
+                data += 'm1'
+                vc.put_object("{pool_name}", "{obj_name}", data)
+                data += 'm2'
                 vc.put_object_versioned("{pool_name}", "{obj_name}", data, version)
-            except {expected_exception}:
-                print('{expected_exception} raised')
-        """).format(pool_name=pool_name, obj_name=obj_name,
-                    expected_exception=expected_exception))
-        self.assertEqual(expected_exception + ' raised', output)
-
+            """).format(pool_name=pool_name, obj_name=obj_name))
 
     def test_delete_object(self):
         vc_mount = self.mounts[1]
@@ -1077,7 +1090,7 @@ vc.disconnect()
         volume_prefix = "/myprefix"
         group_id = "grpid"
         volume_id = "volid"
-        self._volume_client_python(vc_mount, dedent("""
+        mount_path = self._volume_client_python(vc_mount, dedent("""
             vp = VolumePath("{group_id}", "{volume_id}")
             create_result = vc.create_volume(vp, 1024*1024*10, namespace_isolated=False)
             print(create_result['mount_path'])

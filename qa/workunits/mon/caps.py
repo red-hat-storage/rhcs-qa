@@ -1,18 +1,18 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
-from __future__ import print_function
-
+import json
 import subprocess
 import shlex
+from StringIO import StringIO
 import errno
 import sys
 import os
 import io
 import re
 
-import six
 
-from ceph_argparse import * # noqa
+import rados
+from ceph_argparse import *
 
 keyring_base = '/tmp/cephtest-caps.keyring'
 
@@ -21,7 +21,7 @@ class UnexpectedReturn(Exception):
     if isinstance(cmd, list):
       self.cmd = ' '.join(cmd)
     else:
-      assert isinstance(cmd, str) or isinstance(cmd, six.text_type), \
+      assert isinstance(cmd, str) or isinstance(cmd, unicode), \
           'cmd needs to be either a list or a str'
       self.cmd = cmd
     self.cmd = str(self.cmd)
@@ -36,12 +36,12 @@ class UnexpectedReturn(Exception):
 def call(cmd):
   if isinstance(cmd, list):
     args = cmd
-  elif isinstance(cmd, str) or isinstance(cmd, six.text_type):
+  elif isinstance(cmd, str) or isinstance(cmd, unicode):
     args = shlex.split(cmd)
   else:
     assert False, 'cmd is not a string/unicode nor a list!'
 
-  print('call: {0}'.format(args))
+  print 'call: {0}'.format(args)
   proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   ret = proc.wait()
 
@@ -52,8 +52,8 @@ def expect(cmd, expected_ret):
   try:
     (r, p) = call(cmd)
   except ValueError as e:
-    print('unable to run {c}: {err}'.format(c=repr(cmd), err=e.message),
-          file=sys.stderr)
+    print >> sys.stderr, \
+             'unable to run {c}: {err}'.format(c=repr(cmd), err=e.message)
     return errno.EINVAL
 
   assert r == p.returncode, \
@@ -72,7 +72,7 @@ def expect_to_file(cmd, expected_ret, out_file, mode='a'):
       'expected result doesn\'t match and no exception was thrown!'
 
   with io.open(out_file, mode) as file:
-    file.write(six.text_type(p.stdout.read()))
+    file.write(unicode(p.stdout.read()))
 
   return p
 
@@ -86,7 +86,7 @@ class Command:
     self.args = []
     for s in j['sig']:
       if not isinstance(s, dict):
-        assert isinstance(s, str) or isinstance(s,six.text_type), \
+        assert isinstance(s, str) or isinstance(s,unicode), \
             'malformatted signature cid {0}: {1}\n{2}'.format(cid,s,j)
         if len(self.sig) > 0:
           self.sig += ' '
@@ -271,7 +271,7 @@ def test_all():
           ]
       }
 
-  for (module,cmd_lst) in cmds.items():
+  for (module,cmd_lst) in cmds.iteritems():
     k = keyring_base + '.' + module
     for cmd in cmd_lst:
 
@@ -281,10 +281,10 @@ def test_all():
       if len(cmd_args) > 0:
         (cmd_args_key, cmd_args_val) = cmd_args.split('=')
 
-      print('generating keyring for {m}/{c}'.format(m=module,c=cmd_cmd))
+      print 'generating keyring for {m}/{c}'.format(m=module,c=cmd_cmd)
       # gen keyring
-      for (good_or_bad,kind_map) in perms.items():
-        for (kind,lst) in kind_map.items():
+      for (good_or_bad,kind_map) in perms.iteritems():
+        for (kind,lst) in kind_map.iteritems():
           for (perm, cap) in lst:
             cap_formatted = cap.format(
                 s=module,
@@ -304,11 +304,11 @@ def test_all():
                 'ceph auth get-or-create {n} {c}'.format(
                   n=cname,c=run_cap), 0, k)
       # keyring generated
-      print('testing {m}/{c}'.format(m=module,c=cmd_cmd))
+      print 'testing {m}/{c}'.format(m=module,c=cmd_cmd)
 
       # test
-      for good_bad in perms.keys():
-        for (kind,lst) in perms[good_bad].items():
+      for good_bad in perms.iterkeys():
+        for (kind,lst) in perms[good_bad].iteritems():
           for (perm,_) in lst:
             cname = 'client.{gb}-{k}-{p}'.format(gb=good_bad,k=kind,p=perm)
 
@@ -343,9 +343,9 @@ def test_misc():
   expect_to_file(
       'ceph auth get-or-create client.caps mon \'allow command "auth caps"' \
           ' with entity="client.caps"\'', 0, k)
-  expect('ceph -n client.caps -k {kf} quorum_status'.format(kf=k), errno.EACCES)
+  expect('ceph -n client.caps -k {kf} mon_status'.format(kf=k), errno.EACCES)
   expect('ceph -n client.caps -k {kf} auth caps client.caps mon \'allow *\''.format(kf=k), 0)
-  expect('ceph -n client.caps -k {kf} quorum_status'.format(kf=k), 0)
+  expect('ceph -n client.caps -k {kf} mon_status'.format(kf=k), 0)
   destroy_keyring(k)
 
 def main():
@@ -354,7 +354,7 @@ def main():
   test_all()
   test_misc()
 
-  print('OK')
+  print 'OK'
 
   return 0
 

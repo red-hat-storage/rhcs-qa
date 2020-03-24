@@ -1,11 +1,12 @@
+from StringIO import StringIO
 import time
 import json
 import logging
+from unittest import SkipTest
 
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
-from teuthology.misc import sudo_write_file
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class TestSessionMap(CephFSTestCase):
     def _get_connection_count(self, status=None):
         perf = self.fs.rank_asok(["perf", "dump"], status=status)
         conn = 0
-        for module, dump in perf.items():
+        for module, dump in perf.iteritems():
             if "AsyncMessenger::Worker" in module:
                 conn += dump['msgr_active_connections']
         return conn
@@ -76,17 +77,26 @@ class TestSessionMap(CephFSTestCase):
         split into multiple versions to obey mds_sessionmap_keys_per_op
         """
 
+        # Start umounted
         self.mount_a.umount_wait()
         self.mount_b.umount_wait()
 
         # Configure MDS to write one OMAP key at once
         self.set_conf('mds', 'mds_sessionmap_keys_per_op', 1)
         self.fs.mds_fail_restart()
-        status = self.fs.wait_for_daemons()
+        self.fs.wait_for_daemons()
+
+        # I would like two MDSs, so that I can do an export dir later
+        self.fs.set_max_mds(2)
+        self.fs.wait_for_daemons()
+
+        status = self.fs.status()
 
         # Bring the clients back
         self.mount_a.mount()
         self.mount_b.mount()
+        self.mount_a.create_files()  # Kick the client into opening sessions
+        self.mount_b.create_files()
 
         # See that they've got sessions
         self.assert_session_count(2, mds_id=self.fs.get_rank(status=status)['name'])
@@ -96,15 +106,12 @@ class TestSessionMap(CephFSTestCase):
         table_json = json.loads(self.fs.table_tool(["0", "show", "session"]))
         log.info("SessionMap: {0}".format(json.dumps(table_json, indent=2)))
         self.assertEqual(table_json['0']['result'], 0)
-        self.assertEqual(len(table_json['0']['data']['sessions']), 2)
+        self.assertEqual(len(table_json['0']['data']['Sessions']), 2)
 
         # Now, induce a "force_open_sessions" event by exporting a dir
         self.mount_a.run_shell(["mkdir", "bravo"])
-        self.mount_a.run_shell(["touch", "bravo/file_a"])
-        self.mount_b.run_shell(["touch", "bravo/file_b"])
-
-        self.fs.set_max_mds(2)
-        status = self.fs.wait_for_daemons()
+        self.mount_a.run_shell(["touch", "bravo/file"])
+        self.mount_b.run_shell(["ls", "-l", "bravo/file"])
 
         def get_omap_wrs():
             return self.fs.rank_asok(['perf', 'dump', 'objecter'], rank=1, status=status)['objecter']['omap_wr']
@@ -140,7 +147,28 @@ class TestSessionMap(CephFSTestCase):
         table_json = json.loads(self.fs.table_tool(["0", "show", "session"]))
         log.info("SessionMap: {0}".format(json.dumps(table_json, indent=2)))
         self.assertEqual(table_json['0']['result'], 0)
-        self.assertEqual(len(table_json['0']['data']['sessions']), 0)
+        self.assertEqual(len(table_json['0']['data']['Sessions']), 0)
+
+    def _sudo_write_file(self, remote, path, data):
+        """
+        Write data to a remote file as super user
+
+        :param remote: Remote site.
+        :param path: Path on the remote being written to.
+        :param data: Data to be written.
+
+        Both perms and owner are passed directly to chmod.
+        """
+        remote.run(
+            args=[
+                'sudo',
+                'python',
+                '-c',
+                'import shutil, sys; shutil.copyfileobj(sys.stdin, file(sys.argv[1], "wb"))',
+                path,
+            ],
+            stdin=data,
+        )
 
     def _configure_auth(self, mount, id_name, mds_caps, osd_caps=None, mon_caps=None):
         """
@@ -161,12 +189,12 @@ class TestSessionMap(CephFSTestCase):
             "mon", mon_caps
         )
         mount.client_id = id_name
-        sudo_write_file(mount.client_remote, mount.get_keyring_path(), out)
+        self._sudo_write_file(mount.client_remote, mount.get_keyring_path(), out)
         self.set_conf("client.{name}".format(name=id_name), "keyring", mount.get_keyring_path())
 
     def test_session_reject(self):
         if not isinstance(self.mount_a, FuseMount):
-            self.skipTest("Requires FUSE client to inject client metadata")
+            raise SkipTest("Requires FUSE client to inject client metadata")
 
         self.mount_a.run_shell(["mkdir", "foo"])
         self.mount_a.run_shell(["mkdir", "foo/bar"])

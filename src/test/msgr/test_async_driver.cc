@@ -24,7 +24,7 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 #include "include/Context.h"
-#include "common/ceph_mutex.h"
+#include "common/Mutex.h"
 #include "common/Cond.h"
 #include "global/global_init.h"
 #include "common/ceph_argparse.h"
@@ -58,6 +58,8 @@
 
 #include <gtest/gtest.h>
 
+
+#if GTEST_HAS_PARAM_TEST
 
 class EventDriverTest : public ::testing::TestWithParam<const char*> {
  public:
@@ -295,25 +297,24 @@ class Worker : public Thread {
 
 class CountEvent: public EventCallback {
   std::atomic<unsigned> *count;
-  ceph::mutex *lock;
-  ceph::condition_variable *cond;
+  Mutex *lock;
+  Cond *cond;
 
  public:
-  CountEvent(std::atomic<unsigned> *atomic,
-             ceph::mutex *l, ceph::condition_variable *c)
-    : count(atomic), lock(l), cond(c) {}
+  CountEvent(std::atomic<unsigned> *atomic, Mutex *l, Cond *c): count(atomic), lock(l), cond(c) {}
   void do_request(uint64_t id) override {
-    std::scoped_lock l{*lock};
+    lock->Lock();
     (*count)--;
-    cond->notify_all();
+    cond->Signal();
+    lock->Unlock();
   }
 };
 
 TEST(EventCenterTest, DispatchTest) {
   Worker worker1(g_ceph_context, 1), worker2(g_ceph_context, 2);
   std::atomic<unsigned> count = { 0 };
-  ceph::mutex lock = ceph::make_mutex("DispatchTest::lock");
-  ceph::condition_variable cond;
+  Mutex lock("DispatchTest::lock");
+  Cond cond;
   worker1.create("worker_1");
   worker2.create("worker_2");
   for (int i = 0; i < 10000; ++i) {
@@ -321,8 +322,9 @@ TEST(EventCenterTest, DispatchTest) {
     worker1.center.dispatch_event_external(EventCallbackRef(new CountEvent(&count, &lock, &cond)));
     count++;
     worker2.center.dispatch_event_external(EventCallbackRef(new CountEvent(&count, &lock, &cond)));
-    std::unique_lock l{lock};
-    cond.wait(l, [&] { return count == 0; });
+    Mutex::Locker l(lock);
+    while (count)
+      cond.Wait(lock);
   }
   worker1.stop();
   worker2.stop();
@@ -330,7 +332,7 @@ TEST(EventCenterTest, DispatchTest) {
   worker2.join();
 }
 
-INSTANTIATE_TEST_SUITE_P(
+INSTANTIATE_TEST_CASE_P(
   AsyncMessenger,
   EventDriverTest,
   ::testing::Values(
@@ -343,6 +345,19 @@ INSTANTIATE_TEST_SUITE_P(
     "select"
   )
 );
+
+#else
+
+// Google Test may not support value-parameterized tests with some
+// compilers. If we use conditional compilation to compile out all
+// code referring to the gtest_main library, MSVC linker will not link
+// that library at all and consequently complain about missing entry
+// point defined in that library (fatal error LNK1561: entry point
+// must be defined). This dummy test keeps gtest_main linked in.
+TEST(DummyTest, ValueParameterizedTestsAreNotSupportedOnThisPlatform) {}
+
+#endif
+
 
 /*
  * Local Variables:

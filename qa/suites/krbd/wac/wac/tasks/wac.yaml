@@ -2,7 +2,10 @@ tasks:
 - exec:
     client.0:
     - "dmesg -C"
+- rbd:
+    all:
+      fs_type: ext4
 - workunit:
     clients:
       all:
-        - rbd/krbd_wac.sh
+        - suites/wac.sh

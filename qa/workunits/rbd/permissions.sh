@@ -40,10 +40,7 @@ delete_users() {
 }
 
 create_users() {
-    ceph auth get-or-create client.volumes \
-	mon 'profile rbd' \
-	osd 'profile rbd pool=volumes, profile rbd-read-only pool=images' \
-	mgr 'profile rbd pool=volumes, profile rbd-read-only pool=images' >> $KEYRING
+    ceph auth get-or-create client.volumes mon 'profile rbd' osd 'profile rbd pool=volumes, profile rbd-read-only pool=images' >> $KEYRING
     ceph auth get-or-create client.images mon 'profile rbd' osd 'profile rbd pool=images' >> $KEYRING
 
     ceph auth get-or-create client.snap_none mon 'allow r' >> $KEYRING
@@ -165,14 +162,15 @@ create_self_managed_snapshot() {
   ID=$1
   POOL=$2
 
-  cat << EOF | CEPH_ARGS="-k $KEYRING" python3
+  cat << EOF | CEPH_ARGS="-k $KEYRING" python
 import rados
 
-with rados.Rados(conffile="", rados_id="${ID}") as cluster:
-  ioctx = cluster.open_ioctx("${POOL}")
+cluster = rados.Rados(conffile="", rados_id="${ID}")
+cluster.connect()
+ioctx = cluster.open_ioctx("${POOL}")
 
-  snap_id = ioctx.create_self_managed_snap()
-  print ("Created snap id {}".format(snap_id))
+snap_id = ioctx.create_self_managed_snap()
+print ("Created snap id {}".format(snap_id))
 EOF
 }
 
@@ -180,20 +178,22 @@ remove_self_managed_snapshot() {
   ID=$1
   POOL=$2
 
-  cat << EOF | CEPH_ARGS="-k $KEYRING" python3
+  cat << EOF | CEPH_ARGS="-k $KEYRING" python
 import rados
 
-with rados.Rados(conffile="", rados_id="mon_write") as cluster1, \
-     rados.Rados(conffile="", rados_id="${ID}") as cluster2:
-  ioctx1 = cluster1.open_ioctx("${POOL}")
+cluster1 = rados.Rados(conffile="", rados_id="mon_write")
+cluster1.connect()
+ioctx1 = cluster1.open_ioctx("${POOL}")
 
-  snap_id = ioctx1.create_self_managed_snap()
-  print ("Created snap id {}".format(snap_id))
+snap_id = ioctx1.create_self_managed_snap()
+print ("Created snap id {}".format(snap_id))
 
-  ioctx2 = cluster2.open_ioctx("${POOL}")
+cluster2 = rados.Rados(conffile="", rados_id="${ID}")
+cluster2.connect()
+ioctx2 = cluster2.open_ioctx("${POOL}")
 
-  ioctx2.remove_self_managed_snap(snap_id)
-  print ("Removed snap id {}".format(snap_id))
+ioctx2.remove_self_managed_snap(snap_id)
+print ("Removed snap id {}".format(snap_id))
 EOF
 }
 
@@ -231,17 +231,6 @@ test_remove_self_managed_snapshots() {
     expect 1 remove_self_managed_snapshot snap_profile_pool volumes
 }
 
-test_rbd_support() {
-    # read-only commands should work on both pools
-    ceph -k $KEYRING --id volumes rbd perf image stats volumes
-    ceph -k $KEYRING --id volumes rbd perf image stats images
-
-    # read/write commands should only work on 'volumes'
-    rbd -k $KEYRING --id volumes create --image-format 2 --image-feature $IMAGE_FEATURES -s 1 volumes/foo
-    ceph -k $KEYRING --id volumes rbd task add remove volumes/foo
-    expect 13 ceph -k $KEYRING --id volumes rbd task add remove images/foo
-}
-
 cleanup() {
     rm -f $KEYRING
 }
@@ -259,8 +248,6 @@ recreate_pools
 test_volumes_access
 
 test_remove_self_managed_snapshots
-
-test_rbd_support
 
 delete_pools
 delete_users

@@ -24,7 +24,9 @@ using ::testing::WithArgs;
 struct TestMockWatcherRewatchRequest : public TestMockFixture {
   typedef RewatchRequest MockRewatchRequest;
 
-  TestMockWatcherRewatchRequest() = default;
+  TestMockWatcherRewatchRequest()
+    : m_watch_lock("watch_lock") {
+  }
 
   void expect_aio_watch(MockImageCtx &mock_image_ctx, int r) {
     librados::MockTestMemIoCtxImpl &mock_io_ctx(get_mock_io_ctx(
@@ -34,7 +36,7 @@ struct TestMockWatcherRewatchRequest : public TestMockFixture {
       .WillOnce(DoAll(WithArgs<1, 2>(Invoke([&mock_image_ctx, &mock_io_ctx, r](librados::AioCompletionImpl *c, uint64_t *cookie) {
                                    *cookie = 234;
                                    c->get();
-                                   mock_image_ctx.image_ctx->op_work_queue->queue(new LambdaContext([&mock_io_ctx, c](int r) {
+                                   mock_image_ctx.image_ctx->op_work_queue->queue(new FunctionContext([&mock_io_ctx, c](int r) {
                                        mock_io_ctx.get_mock_rados_client()->finish_aio_completion(c, r);
                                      }), r);
                                    })),
@@ -49,7 +51,7 @@ struct TestMockWatcherRewatchRequest : public TestMockFixture {
       .WillOnce(DoAll(Invoke([&mock_image_ctx, &mock_io_ctx, r](uint64_t handle,
                                                                 librados::AioCompletionImpl *c) {
                         c->get();
-                        mock_image_ctx.image_ctx->op_work_queue->queue(new LambdaContext([&mock_io_ctx, c](int r) {
+                        mock_image_ctx.image_ctx->op_work_queue->queue(new FunctionContext([&mock_io_ctx, c](int r) {
                             mock_io_ctx.get_mock_rados_client()->finish_aio_completion(c, r);
                           }), r);
                         }),
@@ -66,7 +68,7 @@ struct TestMockWatcherRewatchRequest : public TestMockFixture {
     }
   };
 
-  ceph::shared_mutex m_watch_lock = ceph::make_shared_mutex("watch_lock");
+  RWLock m_watch_lock;
   WatchCtx m_watch_ctx;
   uint64_t m_watch_handle = 123;
 };
@@ -89,7 +91,7 @@ TEST_F(TestMockWatcherRewatchRequest, Success) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
   ASSERT_EQ(0, ctx.wait());
@@ -114,7 +116,7 @@ TEST_F(TestMockWatcherRewatchRequest, UnwatchError) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
   ASSERT_EQ(0, ctx.wait());
@@ -139,7 +141,7 @@ TEST_F(TestMockWatcherRewatchRequest, WatchBlacklist) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
   ASSERT_EQ(-EBLACKLISTED, ctx.wait());
@@ -164,7 +166,7 @@ TEST_F(TestMockWatcherRewatchRequest, WatchDNE) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
   ASSERT_EQ(-ENOENT, ctx.wait());
@@ -189,7 +191,7 @@ TEST_F(TestMockWatcherRewatchRequest, WatchError) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
   ASSERT_EQ(-EINVAL, ctx.wait());
@@ -215,7 +217,7 @@ TEST_F(TestMockWatcherRewatchRequest, InvalidWatchHandler) {
                                                        &m_watch_handle,
                                                        &ctx);
   {
-    std::unique_lock watch_locker{m_watch_lock};
+    RWLock::WLocker watch_locker(m_watch_lock);
     req->send();
   }
 

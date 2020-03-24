@@ -110,7 +110,8 @@ public:
   }
 
   void expect_start_op(librbd::MockExclusiveLock &mock_exclusive_lock) {
-    EXPECT_CALL(mock_exclusive_lock, start_op(_)).WillOnce(Return(new LambdaContext([](int){})));
+    EXPECT_CALL(mock_exclusive_lock, start_op(_)).WillOnce(
+      ReturnNew<FunctionContext>([](int) {}));
   }
 
   void expect_test_features(librbd::MockTestImageCtx &mock_image_ctx,

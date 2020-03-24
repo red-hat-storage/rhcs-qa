@@ -21,9 +21,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef __linux__
 #include <sys/xattr.h>
-#endif
 
 static size_t acl_ea_size(int count)
 {
