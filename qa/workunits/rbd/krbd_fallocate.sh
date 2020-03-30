@@ -82,13 +82,13 @@ IMAGE_NAME="fallocate-test"
 
 rbd create --size 200 $IMAGE_NAME
 
-IMAGE_SIZE=$(rbd info --format=json $IMAGE_NAME | python -c 'import sys, json; print json.load(sys.stdin)["size"]')
-OBJECT_SIZE=$(rbd info --format=json $IMAGE_NAME | python -c 'import sys, json; print json.load(sys.stdin)["object_size"]')
+IMAGE_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print( json.load(sys.stdin)["size"])')
+OBJECT_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print( json.load(sys.stdin)["object_size"])')
 NUM_OBJECTS=$((IMAGE_SIZE / OBJECT_SIZE))
 [[ $((IMAGE_SIZE % OBJECT_SIZE)) -eq 0 ]]
 
 IMAGE_ID="$(rbd info --format=json $IMAGE_NAME |
-    python -c "import sys, json; print json.load(sys.stdin)['block_name_prefix'].split('.')[1]")"
+    python3 -c "import sys, json; print(json.load(sys.stdin)['block_name_prefix'].split('.')[1])")"
 
 DEV=$(sudo rbd map $IMAGE_NAME)
 
