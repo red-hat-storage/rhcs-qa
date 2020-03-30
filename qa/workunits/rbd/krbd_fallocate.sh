@@ -80,7 +80,7 @@ EOF
 
 IMAGE_NAME="fallocate-test"
 
-rbd create --size 200 $IMAGE_NAME
+rbd create --size 200 $IMAGE_NAME --image-feature layering
 
 IMAGE_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print( json.load(sys.stdin)["size"])')
 OBJECT_SIZE=$(rbd info --format=json $IMAGE_NAME | python3 -c 'import sys, json; print( json.load(sys.stdin)["object_size"])')
