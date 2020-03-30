@@ -56,7 +56,7 @@ function assert_unlocked() {
 SYSFS_DIR="/sys/bus/rbd/devices"
 IMAGE_NAME="exclusive-option-test"
 
-rbd create --size 1 --image-feature '' $IMAGE_NAME layering
+rbd create --size 1  '' $IMAGE_NAME --image-feature layering
 
 IMAGE_ID="$(rbd info --format=json $IMAGE_NAME |
     python3 -c "import sys, json; print( json.load(sys.stdin)['block_name_prefix'].split('.')[1])")"
