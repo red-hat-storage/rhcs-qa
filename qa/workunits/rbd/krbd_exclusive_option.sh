@@ -27,7 +27,7 @@ function assert_locked() {
         python3 -m json.tool --sort-keys)"
 
     local expected
-    expected="$(cat <<EOF |  -m json.tool --sort-keys
+    expected="$(cat <<EOF |  python3 -m json.tool --sort-keys
 {
     "lockers": [
         {
