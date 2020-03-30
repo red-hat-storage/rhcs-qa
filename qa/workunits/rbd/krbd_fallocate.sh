@@ -24,7 +24,7 @@ function py_fallocate() {
     local mode=$1
     local offset=$2
 
-    python <<EOF
+    python3 <<EOF
 import os, ctypes, ctypes.util
 FALLOC_FL_KEEP_SIZE = 0x01
 FALLOC_FL_PUNCH_HOLE = 0x02
