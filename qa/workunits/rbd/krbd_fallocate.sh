@@ -11,7 +11,7 @@ set -ex
 function py_blkdiscard() {
     local offset=$1
 
-    python <<EOF
+    python3 <<EOF
 import fcntl, struct
 BLKDISCARD = 0x1277
 with open('$DEV', 'w') as dev:
