@@ -31,7 +31,7 @@ function clean_up {
 
 clean_up
 
-trap clean_up INT TERM EXIT
+trap clean_up INT TERM
 
 # create an image
 dd if=/bin/sh of=/tmp/img1 bs=1k count=1 seek=10
@@ -42,7 +42,7 @@ dd if=/bin/ln of=/tmp/img1 bs=1k seek=100000
 dd if=/dev/zero of=/tmp/img1 count=0 seek=150000
 
 # import
-rbd import /tmp/img1 testimg1
+rbd import /tmp/img1 testimg1 --image-feature layering
 sudo rbd device map testimg1 --user $CEPH_ID $SECRET_ARGS
 
 DEV_ID1=$(get_device_dir rbd testimg1 -)
@@ -88,4 +88,5 @@ cmp /tmp/img1 /tmp/img1.export
 rbd snap rm --snap=snap1 testimg1
 sudo dd if=/dev/rbd/rbd/testimg1@snap1 of=/tmp/img1.snap1 2>&1 | grep 'Input/output error'
 
+clean_up
 echo OK
