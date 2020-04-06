@@ -165,10 +165,7 @@ def create_zone(ctx, config, target_zone, master_zonegroup, target_clients):
                  check_status=True)
 
     rgwadmin(ctx, target_clients[0],
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
     zone_to_conf(ctx, target_clients, target_zone)
@@ -330,10 +327,7 @@ def failover(ctx, config):
 
     # Do period commit
     rgwadmin(ctx, new_master,
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
     # Restart gateway
@@ -383,10 +377,7 @@ def failback(ctx, config):
     # Do period commit
 
     rgwadmin(ctx, master_clients[0],
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
     # Restart gateway
@@ -411,10 +402,7 @@ def failback(ctx, config):
 
         # Do period commit
         rgwadmin(ctx, target_clients[0],
-                 cmd=['period', 'update', '--commit',
-                      '--access_key',
-                      access_key, '--secret',
-                      secret],
+                 cmd=['period', 'update', '--commit'],
                  check_status=True)
 
         # Restart gateway
