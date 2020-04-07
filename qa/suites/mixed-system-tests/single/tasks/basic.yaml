@@ -25,6 +25,7 @@ tasks:
         script: test_Mbuckets_with_Nobjects.py
         clients: ['client.1']
         config:
+            local_file_delete: true
             user_count: 2
             bucket_count: 5
             objects_count: 100
@@ -48,6 +49,7 @@ tasks:
         script: test_Mbuckets_with_Nobjects.py
         clients: ['client.0']
         config:
+            local_file_delete: true
             user_count: 5
             bucket_count: 5
             objects_count: 50
@@ -70,6 +72,7 @@ tasks:
         script: test_Mbuckets_with_Nobjects.py
         clients: ['client.1']
         config:
+            local_file_delete: true
             user_count: 2
             bucket_count: 5
             objects_count: 50
@@ -93,6 +96,7 @@ tasks:
         script: test_versioning_with_objects.py
         clients: ['client.0']
         config:
+            local_file_delete: true
             user_count: 2
             bucket_count: 2
             objects_count: 50
@@ -111,6 +115,7 @@ tasks:
         script: test_versioning_with_objects.py
         clients: ['client.1']
         config:
+            local_file_delete: true
             user_count: 2
             bucket_count: 2
             objects_count: 50
@@ -126,3 +131,4 @@ tasks:
                 upload_after_suspend: false
     - mixed_system_test.restart_tests:
         daemons: ["mgr", "mon", "mds", "osd"]
+
