@@ -115,7 +115,7 @@ assert_zeroes 0
 # unaligned blkdev_issue_discard
 allocate
 py_blkdiscard $((OBJECT_SIZE / 2))
-assert_zeroes_unaligned 1
+assert_zeroes_unaligned $NUM_OBJECTS
 
 # unaligned blkdev_issue_zeroout w/ BLKDEV_ZERO_NOUNMAP
 allocate
