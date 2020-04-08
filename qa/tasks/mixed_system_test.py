@@ -3,7 +3,6 @@ import logging
 
 from tasks.mixed_system_tests import system
 from tasks.mixed_system_tests import ios
-from time import sleep
 
 log = logging.getLogger(__name__)
 
@@ -42,13 +41,13 @@ def restart_tests(ctx, config):
     """
     Perform restart test scenarios based on the daemon sequentially
         1) stop daemon.
-            a. verify IO & cluster health.
+            a. verify cluster health.
             b. start daemon and wait for cluster status to be healthy.
         2) restart daemon.
-            a. verify IO & cluster health.
+            a. verify cluster health.
             b. wait for cluster status to be healthy.
         3) reboot daemon node.
-            a. verify IO & cluster health.
+            a. verify cluster health.
             b. wait for node up & running, and cluster status to be healthy.
     Args:
         ctx: context obj
@@ -60,15 +59,16 @@ def restart_tests(ctx, config):
     """
     daemons = config.get('daemons')
     try:
+        log.info("System tests - STARTED ")
         for daemon in daemons:
             stats = system.get_daemon_info(daemon, ctx)
             assert stats.get("active_count") > 0,\
                 "{} Not found in cluster".format(daemon)
             assert system.ceph_daemon_system_test(ctx, daemon)
             log.info("{} completed".format(daemon))
-            sleep(60)
         yield
     except Exception as err:
         assert False, err
     finally:
-        log.info("Completed")
+        log.info("System tests - COMPLETED ")
+
