@@ -77,8 +77,8 @@ tasks:
             bucket_count: 5
             objects_count: 50
             objects_size_range:
-                min: 1000
-                max: 1500
+                min: 100
+                max: 150
             test_ops:
                 create_bucket: true
                 create_object: true
@@ -131,4 +131,3 @@ tasks:
                 upload_after_suspend: false
     - mixed_system_test.restart_tests:
         daemons: ["mgr", "mon", "mds", "osd"]
-
