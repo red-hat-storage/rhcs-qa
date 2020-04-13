@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-TEST_POOL=ecpool
+TEST_POOL=ecpool1
 TEST_IMAGE=test1
 PGS=16
 
