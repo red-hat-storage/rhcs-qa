@@ -2,7 +2,7 @@
 
 TEST_POOL=ecpool
 TEST_IMAGE=test1
-PGS=12
+PGS=16
 
 ceph osd pool create $TEST_POOL $PGS $PGS erasure
 ceph osd pool application enable $TEST_POOL rbd
