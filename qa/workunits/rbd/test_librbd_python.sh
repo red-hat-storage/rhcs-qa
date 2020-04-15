@@ -6,7 +6,7 @@ source /etc/os-release
 
 pycmd=$"python3 -m nose"
 
-if [ "$VERSION_ID" == "7.7" ]; then
+if [ "$VERSION_ID" == "7.7" ] || [ "$VERSION_ID" == "7.8" ] ; then
         pycmd=$"nosetests"
 fi
 
