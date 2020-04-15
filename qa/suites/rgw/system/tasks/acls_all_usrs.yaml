@@ -1,3 +1,4 @@
+parent_frag: acls_all_usrs
 tasks:
 - ssh-keys: null
 - ceph-ansible: null
