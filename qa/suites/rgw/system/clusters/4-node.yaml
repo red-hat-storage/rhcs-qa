@@ -1,5 +1,5 @@
-linked_frags: ['acls_all_usrs',
-               'acls_reset']
+frag_id: ['rgw:system:acls',
+          'rgw:system:acls_all_urs']
 overrides:
   ceph_ansible:
     vars:
