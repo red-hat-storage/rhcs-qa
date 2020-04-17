@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/acls_reset']
+frag_id: '0-acls-reset'
 tasks:
 - ssh-keys: null
 - ceph-ansible: null

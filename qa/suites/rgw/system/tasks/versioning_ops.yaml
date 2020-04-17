@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/version_ops']
+frag_id: '0-versioning-ops'
 tasks:
   - ssh-keys: null
   - ceph-ansible: null

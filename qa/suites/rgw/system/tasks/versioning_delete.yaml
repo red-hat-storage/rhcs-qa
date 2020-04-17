@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/version_delete']
+frag_id: '0-versioning-delete'
 tasks:
   - ssh-keys: null
   - ceph-ansible: null

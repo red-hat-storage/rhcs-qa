@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/Mbuckets_with_Nobjects_sharding']
+frag_id: '0-Mbuckets_with_Nobjects_sharding'
 tasks:
   - ssh-keys: null
   - ceph-ansible: null

@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/Mbuckets_with_Nobjects']
+frag_id: '0-MBuckets_with_objects'
 tasks:
   - ssh-keys: null
   - ceph-ansible: null

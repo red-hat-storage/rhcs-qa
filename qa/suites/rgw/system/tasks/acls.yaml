@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/acls']
+frag_id: '0-acls'
 tasks:
 - ssh-keys: null
 - ceph-ansible: null

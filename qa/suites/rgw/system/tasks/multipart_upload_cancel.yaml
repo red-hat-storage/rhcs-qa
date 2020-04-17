@@ -1,4 +1,4 @@
-frag_id: ['rgw/system/multipart_upload_cancel']
+frag_id: '0-multipart_upload_cancel'
 tasks:
 - ssh-keys: null
 - ceph-ansible: null
