@@ -1,3 +1,4 @@
+frag_id: ['rgw/system/acls_copy_obj']
 tasks:
 - ssh-keys: null
 - ceph-ansible: null
