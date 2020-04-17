@@ -1,5 +1,5 @@
-#frag_id: ['rgw/system:acls',
-#          'rgw/system/acls_all_usrs']
+frag_id: ['rgw/system/acls',
+          'rgw/system/acls_all_usrs']
 overrides:
   ceph_ansible:
     vars:
