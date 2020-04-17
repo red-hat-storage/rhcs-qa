@@ -1,5 +1,5 @@
-frag_id: ['rgw:system:Mbuckets_with_Nobjects',
-          'rgw:system:acls']
+#frag_id: ['rgw:system:Mbuckets_with_Nobjects',
+#          'rgw:system:acls']
 overrides:
   ceph_ansible:
     vars:
