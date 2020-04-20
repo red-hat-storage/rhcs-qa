@@ -184,7 +184,7 @@ def compile_with_gcov(ctx, config, grepo, remote, builddir):
 #			check_status=False, wait=True)
 
 	r = remote.run(args=['sudo', 'git', 'clone',\
-			'https://github.com/ceph/ceph.git','/sourcebuild/ceph'], timeout=3600,\
+			'https://github.com/red-hat-storage/ceph.git','/sourcebuild/ceph'], timeout=3600,\
 			check_status=False, wait=True)
 
 	get_dependencies(ctx, config, remote)
@@ -209,7 +209,7 @@ def task(ctx, config):
 	"""
 	''' Hard coding for POC purpose'''
 
-	grepo="https://gitlab.cee.redhat.com/ceph/ceph.git"
+	grepo="https://github.com/red-hat-storage/ceph.git"
 	builddir="/sourcebuild/ceph/"
 
 	with parallel() as ptask:
