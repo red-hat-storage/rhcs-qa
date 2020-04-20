@@ -206,7 +206,7 @@ def clone_repo(ctx):
                 'clone',
                 '-b',
                 'add-encryption',
-                'http://gitlab.cee.redhat.com/ceph/ceph-qe-scripts.git',
+                'https://github.com/red-hat-storage/ceph-qe-scripts.git',
                 ])
 
         remote.run(args=['virtualenv', 'venv'])
