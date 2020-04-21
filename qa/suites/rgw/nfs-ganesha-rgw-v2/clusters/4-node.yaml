@@ -10,6 +10,7 @@ overrides:
       journal_size: 1024
       osd_auto_discovery: false
       ceph_test: true
+      dashboard_enabled: false
       ceph_conf_overrides:
         global:
           osd_default_pool_size: 3

@@ -11,6 +11,7 @@ overrides:
       osd_auto_discovery: false
       osd_objectstore: bluestore
       ceph_test: true
+      dashboard_enabled: false
       ceph_conf_overrides:
         global:
           osd_default_pool_size: 3
