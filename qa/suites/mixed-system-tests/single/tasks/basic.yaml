@@ -27,11 +27,11 @@ tasks:
         config:
             local_file_delete: true
             user_count: 2
-            bucket_count: 5
-            objects_count: 100
+            bucket_count: 3
+            objects_count: 500000
             objects_size_range:
-                min: 100
-                max: 200
+                min: 2
+                max: 50
             test_ops:
                 create_bucket: true
                 create_object: true
@@ -39,7 +39,7 @@ tasks:
                 delete_bucket_object: true
                 sharding:
                     enable: true
-                    max_shards: 32
+                    max_shards: 100
                 compression:
                     enable: false
                     type: zlib
@@ -50,12 +50,12 @@ tasks:
         clients: ['client.0']
         config:
             local_file_delete: true
-            user_count: 5
-            bucket_count: 5
-            objects_count: 50
+            user_count: 2
+            bucket_count: 3
+            objects_count: 500000
             objects_size_range:
-                min: 100
-                max: 200
+                min: 2
+                max: 50
             test_ops:
                 create_bucket: true
                 create_object: true
@@ -73,12 +73,12 @@ tasks:
         clients: ['client.1']
         config:
             local_file_delete: true
-            user_count: 2
-            bucket_count: 5
-            objects_count: 50
+            user_count: 1
+            bucket_count: 2
+            objects_count: 100000
             objects_size_range:
-                min: 100
-                max: 150
+                min: 50
+                max: 500
             test_ops:
                 create_bucket: true
                 create_object: true
@@ -97,13 +97,13 @@ tasks:
         clients: ['client.0']
         config:
             local_file_delete: true
-            user_count: 2
-            bucket_count: 2
-            objects_count: 50
+            user_count: 1
+            bucket_count: 1
+            objects_count: 100000
             version_count: 5
             objects_size_range:
-                min: 50
-                max: 80
+                min: 2
+                max: 50
             test_ops:
                 enable_version: true
                 suspend_version: true
@@ -116,13 +116,13 @@ tasks:
         clients: ['client.1']
         config:
             local_file_delete: true
-            user_count: 2
-            bucket_count: 2
-            objects_count: 50
+            user_count: 1
+            bucket_count: 1
+            objects_count: 100000
             version_count: 5
             objects_size_range:
-                min: 50
-                max: 80
+                min: 2
+                max: 50
             test_ops:
                 enable_version: true
                 suspend_version: false
