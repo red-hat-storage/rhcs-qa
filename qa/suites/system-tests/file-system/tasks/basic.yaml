@@ -1,0 +1,5 @@
+tasks:
+- parallel:
+    - print: "Add FS tasks here!!!"
+    - print: "Add FS tasks here!!!"
+- print: "Add FS tasks here!!!"

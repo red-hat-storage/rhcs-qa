@@ -131,4 +131,3 @@ tasks:
                 upload_after_suspend: false
     - mixed_system_test.restart_tests:
         daemons: ["mgr", "mon", "mds", "osd"]
-
