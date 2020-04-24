@@ -2,7 +2,7 @@ meta:
 - desc: "use bluestore + dmcrypt option"
 
 overrides:
-   ceph_ansible:
+   rhceph_ansible:
      vars:
         osd_objectstore: bluestore
         dmcrypt: True

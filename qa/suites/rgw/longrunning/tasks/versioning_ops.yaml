@@ -1,7 +1,7 @@
 # tests version enable, download, suspend_version, and upload after objects after suspending
 tasks:
   - ssh-keys: null
-  - ceph-ansible: null
+  - rhceph_ansible: null
   - rgw-longrunning:
       test: versioning_ops
       script: test_versioning_with_objects.py

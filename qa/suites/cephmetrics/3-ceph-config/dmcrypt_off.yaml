@@ -2,6 +2,6 @@ meta:
 - desc: "without dmcrypt"
 
 overrides:
-   ceph_ansible:
+   rhceph_ansible:
      vars:
         dmcrypt: False

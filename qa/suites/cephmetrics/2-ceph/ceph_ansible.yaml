@@ -1,8 +1,8 @@
 meta:
-- desc: "Build the ceph cluster using ceph-ansible"
+- desc: "Build the ceph cluster using rhceph_ansible"
 
 overrides:
-   ceph_ansible:
+   rhceph_ansible:
      vars:
         ceph_conf_overrides:
           global:
@@ -28,5 +28,5 @@ overrides:
             pg_num: "64"
 tasks:
 - ssh-keys:
-- ceph_ansible:
+- rhceph_ansible:
 - install.ship_utilities:
