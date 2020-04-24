@@ -1,6 +1,6 @@
 tasks:
 - ssh-keys:
-- ceph_ansible:
+- rhceph_ansible:
     vars:
       ceph_conf_overrides:
         global:

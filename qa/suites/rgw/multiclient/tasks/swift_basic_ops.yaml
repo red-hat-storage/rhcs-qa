@@ -1,7 +1,7 @@
 # swift basic ops: create container, upload object, download object, delete object and delete container.
 tasks:
   - ssh-keys: null
-  - ceph-ansible: null
+  - rhceph_ansible: null
   - parallel:
       - rgw-system-test:
           test: swift_basic_ops

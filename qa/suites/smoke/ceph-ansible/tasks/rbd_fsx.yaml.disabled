@@ -1,12 +1,12 @@
 overrides:
- ceph_ansible:
+ rhceph_ansible:
    vars:
       ceph_conf_overrides:
           client:
             rbd default data pool: datapool
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
 - install.ship_utilities:
 - exec:
     client.0:

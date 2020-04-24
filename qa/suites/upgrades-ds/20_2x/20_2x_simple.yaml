@@ -1,5 +1,5 @@
 overrides:
-  ceph-ansible:
+  rhceph_ansible:
     vars:
       ceph_stable: true
       ceph_origin: distro
@@ -24,7 +24,7 @@ roles:
 - - client.0
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
     rhbuild: '2.0'
 - install.ship_utilities: 
 - ceph-deploy.upgrade_simple:

@@ -1,6 +1,6 @@
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
 - install.ship_utilities:
 - full_sequential:
   - radosbench:

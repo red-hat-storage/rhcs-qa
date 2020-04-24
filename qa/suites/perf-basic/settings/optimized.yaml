@@ -3,7 +3,7 @@ meta:
    Use debug level 0/0 for performance tests.
 
 overrides:
-  ceph_ansible:
+  rhceph_ansible:
    vars:
     ceph_conf_overrides:
       mon:

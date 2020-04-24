@@ -2,7 +2,7 @@ meta:
 - desc: "test bluestore option"
 
 overrides:
-   ceph_ansible:
+   rhceph_ansible:
      vars:
         osd_objectstore: bluestore
 

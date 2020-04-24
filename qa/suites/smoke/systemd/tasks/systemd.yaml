@@ -1,5 +1,5 @@
 overrides:
-  ceph_ansible:
+  rhceph_ansible:
     rhbuild: '2.2'
     vars:
       ceph_conf_overrides:
@@ -18,7 +18,7 @@ overrides:
       osd_scenario: collocated
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
 - install.ship_utilities:
 - systemd:
 - workunit:
