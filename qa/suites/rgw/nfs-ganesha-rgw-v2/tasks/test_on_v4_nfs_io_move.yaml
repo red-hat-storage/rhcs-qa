@@ -1,6 +1,6 @@
 tasks:
 - ssh-keys: null
-- ceph-ansible: null
+- rhceph_ansible: null
 - nfs_ganesha_rgw_v2:
     test-name: test_on_nfs_io_move
     nfs-version: 4
