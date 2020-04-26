@@ -208,7 +208,7 @@ def configure_master_zonegroup_and_zones(ctx, config, master_zonegroup, master_z
              cmd=['period', 'update', '--commit'],
              check_status=True)
 
-    zone_to_conf(ctx, master_clients, master_zone)
+    #zone_to_conf(ctx, master_clients, master_zone)
 
     yield
 
