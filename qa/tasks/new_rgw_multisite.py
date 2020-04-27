@@ -270,7 +270,7 @@ def restart_rgw(ctx, role):
     (remote,) = ctx.cluster.only(role).remotes.iterkeys()
     hostname = remote.name.split('@')[1].split('.')[0]
     rgw_cmd = [
-        'sudo', 'systemctl', 'restart', 'ceph-radosgw@rgw.{hostname}'.format(hostname=hostname)]
+        'sudo', 'systemctl', 'restart', 'ceph-radosgw.target']
 
     run_cmd = list(rgw_cmd)
     remote.run(args=run_cmd)
