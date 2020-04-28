@@ -1,5 +1,5 @@
 overrides:
-  ceph_ansible:
+  rhceph_ansible:
     vars:
       ceph_conf_overrides:
           global:
@@ -29,7 +29,7 @@ roles:
   - client.0
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
 - install.ship_utilities:
 - exec:
      client.0:

@@ -1,10 +1,10 @@
 tasks:
 - ssh-keys: null
-- ceph-ansible:
+- rhceph_ansible:
     cluster: c1
-- ceph-ansible:
+- rhceph_ansible:
     cluster: c2
-- ceph-ansible:
+- rhceph_ansible:
     cluster: c3
 - install.ship_utilities: null
 - new-rgw-multisite:

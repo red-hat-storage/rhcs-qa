@@ -1,6 +1,6 @@
 tasks:
 - ssh-keys: null
-- ceph-ansible: null
+- rhceph_ansible: null
 - rgw-system-test:
     test: test_acls_all_usrs
     test_version: v1

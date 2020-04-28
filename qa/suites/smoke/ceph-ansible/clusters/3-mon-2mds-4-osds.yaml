@@ -1,7 +1,7 @@
 meta:
 - desc: "3 mon, 2 mds  and 3 osd cluster"
 overrides:
- ceph_ansible:
+ rhceph_ansible:
    vars:
       osd_scenario: collocated
       ceph_conf_overrides:

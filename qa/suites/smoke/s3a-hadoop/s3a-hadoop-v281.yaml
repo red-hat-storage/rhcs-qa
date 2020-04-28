@@ -1,5 +1,5 @@
 overrides:
-    ceph_ansible:
+    rhceph_ansible:
       osd_auto_discovery: false
       vars:
         ceph_conf_overrides:
@@ -22,6 +22,6 @@ roles:
 - [mgr.x]
 tasks:
 - ssh-keys:
-- ceph-ansible:
+- rhceph_ansible:
 - s3a-hadoop:
     hadoop-version: '2.8.1'

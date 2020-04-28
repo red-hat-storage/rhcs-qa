@@ -4,7 +4,7 @@ meta:
    Must be run on bare-metal machines.
    On VMs performance results will be inconsistent
    and can't be compared across runs.
-   Run ceph on a multi node using ceph-ansible.
+   Run ceph on a multi node using rhceph_ansible.
    Use xfs beneath the osds.
    Setup rgw on client.0
 
@@ -20,4 +20,4 @@ roles:
 tasks:
 - install:
 - ssh_keys:
-- ceph-ansible:
+- rhceph_ansible:
