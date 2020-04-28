@@ -2,7 +2,7 @@
 # multipart upload
 tasks:
   - ssh-keys: null
-  - ceph-ansible: null
+  - rhceph_ansible: null
   - rgw-longrunning:
       test: Mbuckets_with_Nobjects_multipart
       script: test_Mbuckets_with_Nobjects.py
