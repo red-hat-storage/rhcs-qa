@@ -168,7 +168,7 @@ def create_zone(ctx, config, target_zone, master_zonegroup, target_clients):
              cmd=['period', 'update', '--commit'],
              check_status=True)
 
-    zone_to_conf(ctx, target_clients, target_zone)
+    #zone_to_conf(ctx, target_clients, target_zone)
 
     yield
 
