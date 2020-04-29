@@ -1,3 +1,7 @@
+"""
+RH Ceph Ansible Task
+"""
+
 import json
 import os
 import re
@@ -18,8 +22,12 @@ from teuthology.orchestra.daemon import DaemonGroup
 from teuthology.task.install import ship_utilities
 from teuthology import misc
 from teuthology import misc as teuthology
+from teuthology.exceptions import (ConfigError, CommandFailedError)
 
 log = logging.getLogger(__name__)
+
+BOOT_DISK = "findmnt -v -n -T / -o SOURCE "
+GET_DISKS = "lsblk -np -r -o {} "
 
 
 class CephAnsible(Task):
@@ -67,6 +75,9 @@ class CephAnsible(Task):
     groups_to_roles ['grafana-server'] = 'grafana-server'
 
     def __init__(self, ctx, config):
+        """
+        Method to initialize ansible object
+        """
         super(CephAnsible, self).__init__(ctx, config)
         config = self.config or dict()
         self.playbook = None
@@ -78,7 +89,11 @@ class CephAnsible(Task):
             self.config['repo'] = os.path.join(teuth_config.ceph_git_base_url,
                                                'ceph-ansible.git')
 
+        # get cluster name, by default 'ceph'
         self.cluster_name = self.config.get('cluster', 'ceph')
+
+        # get ceph rhbuild
+        self.rhbuild = str(ctx.config.get('redhat').get('rhbuild'))
 
         # Legacy option set to true in case we are running a test
         # which was earlier using "ceph" task for configuration
@@ -103,9 +118,14 @@ class CephAnsible(Task):
             vars['ceph_dev_branch'] = ctx.config.get('branch', 'master')
 
     def setup(self):
+        """
+        Method to setup ansible environment to run playbook
+        """
         super(CephAnsible, self).setup()
+
         # generate hosts file based on test config
         self.generate_hosts_file()
+
         # generate playbook file if it exists in config
         self.playbook_file = None
         if self.playbook is not None:
@@ -120,6 +140,7 @@ class CephAnsible(Task):
             playbook_file.write(pb_buffer.read())
             playbook_file.flush()
             self.playbook_file = playbook_file.name
+
         # everything from vars in config go into group_vars/all file
         extra_vars = dict()
         extra_vars.update(self.config.get('vars', dict()))
@@ -128,7 +149,9 @@ class CephAnsible(Task):
             prefix='teuth_ansible_gvar', content=gvar)
 
     def remove_cluster_prefix(self):
-
+        """
+        Method to extract nodes,roles based on cluster prefix
+        """
         stripped_role = {}
         self.each_cluster = self.ctx.cluster.only(
             lambda role: role.startswith(self.cluster_name))
@@ -192,7 +215,9 @@ class CephAnsible(Task):
         self._ship_utilities()
 
     def generate_hosts_file(self):
-
+        """
+        Method to generate inventory file
+        """
         hosts_dict = dict()
         self.remove_cluster_prefix()
 
@@ -478,20 +503,145 @@ class CephAnsible(Task):
                 if out in ('HEALTH_OK', 'HEALTH_WARN'):
                     break
 
+    @staticmethod
+    def test_disk(remote, disk):
+        """
+        test disk
+        Args:
+            remote: remote object
+            disk: name of disk
+        Returns:
+            boolean
+        """
+        try:
+            remote.run(
+                args=[
+                    # node exists
+                    'stat',
+                    disk,
+                    run.Raw('&&'),
+                    # readable
+                    'sudo', 'dd', 'if=%s' % disk, 'of=/dev/null', 'count=1',
+                    run.Raw('&&'),
+                    # not mounted
+                    run.Raw('!'),
+                    'mount',
+                    run.Raw('|'),
+                    'grep', '-q', disk,
+                ]
+            )
+            return True
+        except CommandFailedError:
+            log.debug("get_scratch_devices: %s is in use" % disk)
+        return False
+
+    def get_disk_info(self, remote):
+        """
+        method to get node disk(s) info
+        Args:
+            remote: remote node object
+        Returns:
+            disks: remote disk details
+        """
+        # get boot disk
+        boot_disk = re.sub(r"\d", '', remote.sh("%s" % BOOT_DISK).strip())
+        log.info("Boot disk found : {}".format(boot_disk))
+
+        # get disk details and skip boot disk
+        # collect list of hdd, ssd and NVme disks
+        headers = ["name", "size", "rota", "type"]
+        disks_info = remote.sh("{} | grep disk".format(
+            GET_DISKS.format(",".join(headers)))).split("\n")
+
+        disks = dict()
+        disks.update({"devices": dict()})
+        disks.update({"static": list()})
+        disks.update({"nvme": list()})
+        disks.update({"ssd": list()})
+        disks.update({"hdd": list()})
+
+        for disk in list(filter(lambda x: x, disks_info)):
+            disk_info = dict(zip(headers, re.split(r"\s+", disk)))
+            disk_name = disk_info["name"]
+
+            # skip boot disk and check disk in use
+            if boot_disk in disk or not self.test_disk(remote, disk_name):
+                continue
+            disk_info = dict(zip(headers, re.split(r"\s+", disk)))
+            disks['devices'].update({disk_name: disk_info})
+
+            # check disk drive type
+            if int(disk_info['rota']) != 0:
+                disks['hdd'].append(disk_name)
+            else:
+                disks['static'].append(disk_name)
+
+                # check for NVme disk
+                if "nvme" in disk_name.lower():
+                    disks['nvme'].append(disk_name)
+                else:
+                    disks['ssd'].append(disk_name)
+
+        return disks
+
     def get_host_vars(self, remote):
         extra_vars = self.config.get('vars', dict())
         host_vars = dict()
+
+        err_msg =\
+            """Insufficient disks for {} scenario, Required : {}, but got {}
+             please choose machine types which has sufficient disks"""
+
+        # check for OSD auto-discovery
         if not extra_vars.get('osd_auto_discovery', False):
             roles = self.each_cluster.remotes[remote]
             dev_needed = len([role for role in roles
                               if role.startswith('osd')])
-            host_vars['devices'] = get_scratch_devices(remote)[0:dev_needed]
-            # check if the host has nvme device, if so use it as journal
-            # fix me asap
-            if extra_vars.get('osd_scenario') == 'non-collocated':
-                journals = ['/dev/nvme0n1']
-                host_vars['dedicated_devices'] = journals
-                host_vars['devices'] = get_scratch_devices(remote)[0:1]
+            disks = get_scratch_devices(remote)
+
+            nvme = self.get_disk_info(remote).get('devices', list())
+
+            if len(disks) < dev_needed:
+                raise ConfigError(
+                    err_msg.format("collocated", dev_needed, len(disks)))
+
+            # Todo:1.> Intelligence to choose devices and dedicated
+            # Todo:1.continued> devices lists based on disk types
+            # disks = disks['hdd'] + disks['ssd'] + disks['nvme']
+            # if disks.get('hdd', 0) and \
+            #         len(disks.get('hdd', list())) >= dev_needed:
+            #     devices = disks.get('hdd')[0:dev_needed]
+            # else:
+            #     devices = disks[0:dev_needed]
+
+            devices = disks[0:dev_needed]
+
+            log.info("devices : {}".format(devices))
+            host_vars['devices'] = devices
+
+            # check if the host has flash device, if so use it as journal
+            # consider non-collocated scenario only for luminous
+            if extra_vars.get('osd_scenario') == 'non-collocated' and \
+                    self.rhbuild.startswith('3'):
+                dedicated_devices = list(set(nvme.keys()) - set(devices))
+                dedicated_devices.sort()
+
+                # check if disks remaining
+                if not dedicated_devices:
+                    raise ConfigError(
+                        err_msg.format("non-collocated", dev_needed,
+                                       len(dedicated_devices)))
+
+                # check dedicated devices has required disks available
+                # else replicated last disk to required number
+                if len(dedicated_devices) >= dev_needed:
+                    dedicated_devices = dedicated_devices[0:dev_needed]
+                else:
+                    required = dev_needed - len(dedicated_devices)
+                    dedicated_devices += [dedicated_devices[-1]] * required
+                log.info("dedicated devices : {}".format(dedicated_devices))
+                host_vars['dedicated_devices'] = dedicated_devices
+
         if 'monitor_interface' not in extra_vars:
             host_vars['monitor_interface'] = remote.interface
         if 'radosgw_interface' not in extra_vars:
