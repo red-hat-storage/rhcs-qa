@@ -3,7 +3,7 @@
 set -ex
 
 function run_test() {
-    ceph osd pool create foo 12
+    ceph osd pool create foo 12 --image-feature layering
     rbd pool init foo
     rbd create --size 1 foo/img
 
