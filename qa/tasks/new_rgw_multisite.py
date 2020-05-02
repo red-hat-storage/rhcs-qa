@@ -165,13 +165,10 @@ def create_zone(ctx, config, target_zone, master_zonegroup, target_clients):
                  check_status=True)
 
     rgwadmin(ctx, target_clients[0],
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
-    zone_to_conf(ctx, target_clients, target_zone)
+    #zone_to_conf(ctx, target_clients, target_zone)
 
     yield
 
@@ -270,7 +267,7 @@ def restart_rgw(ctx, role):
     (remote,) = ctx.cluster.only(role).remotes.iterkeys()
     hostname = remote.name.split('@')[1].split('.')[0]
     rgw_cmd = [
-        'sudo', 'systemctl', 'restart', 'ceph-radosgw@rgw.{hostname}'.format(hostname=hostname)]
+        'sudo', 'systemctl', 'restart', 'ceph-radosgw.target']
 
     run_cmd = list(rgw_cmd)
     remote.run(args=run_cmd)
@@ -330,10 +327,7 @@ def failover(ctx, config):
 
     # Do period commit
     rgwadmin(ctx, new_master,
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
     # Restart gateway
@@ -383,10 +377,7 @@ def failback(ctx, config):
     # Do period commit
 
     rgwadmin(ctx, master_clients[0],
-             cmd=['period', 'update', '--commit',
-                  '--access_key',
-                  access_key, '--secret',
-                  secret],
+             cmd=['period', 'update', '--commit'],
              check_status=True)
 
     # Restart gateway
@@ -411,10 +402,7 @@ def failback(ctx, config):
 
         # Do period commit
         rgwadmin(ctx, target_clients[0],
-                 cmd=['period', 'update', '--commit',
-                      '--access_key',
-                      access_key, '--secret',
-                      secret],
+                 cmd=['period', 'update', '--commit'],
                  check_status=True)
 
         # Restart gateway
