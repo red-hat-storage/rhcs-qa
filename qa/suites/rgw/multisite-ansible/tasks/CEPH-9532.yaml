@@ -45,7 +45,7 @@ tasks:
       duration: 60
 - new-rgw-multisite.addzone:
       name: zone3
-      endpoints: c1.rgw.1
+      endpoints: c1.rgw.0
 - multisite-test:
       test-name: test_Mbuckets_with_Nobjects
       test_dir_version: v1
@@ -61,7 +61,7 @@ tasks:
       verification_script: read_io_info
 - new-rgw-multisite.failover:
       new_master_zone: zone3
-      new_master: c1.rgw.1
+      new_master: c1.rgw.0
 - multisite-test:
       test-name: test_Mbuckets_with_Nobjects
       test_dir_version: v1
