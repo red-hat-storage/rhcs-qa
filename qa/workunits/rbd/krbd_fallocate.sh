@@ -118,7 +118,7 @@ kernel_version=$(cat /proc/version | awk '{print $3}'| cut -c1)
 allocate
 py_blkdiscard $((OBJECT_SIZE / 2))
 if [ $kernel_version = "4" ]; then
-        assert_zeroes_unaligned 1
+        assert_zeroes_unaligned $NUM_OBJECTS
 fi
 
 if [ $kernel_version = "5" ]; then
