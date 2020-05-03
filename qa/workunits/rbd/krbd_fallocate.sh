@@ -112,18 +112,11 @@ allocate
 py_fallocate FALLOC_FL_PUNCH_HOLE\|FALLOC_FL_KEEP_SIZE 0
 assert_zeroes 0
 
-#Checking kernel version since py_blkdiscard works depends on kernel verions
-kernel_version=$(cat /proc/version | awk '{print $3}'| cut -c1)
 # unaligned blkdev_issue_discard
 allocate
 py_blkdiscard $((OBJECT_SIZE / 2))
-if [ $kernel_version = "4" ]; then
-        assert_zeroes_unaligned $NUM_OBJECTS
-fi
+assert_zeroes_unaligned $NUM_OBJECTS
 
-if [ $kernel_version = "5" ]; then
-        assert_zeroes_unligned $NUM_OBJECTS
-fi
 # unaligned blkdev_issue_zeroout w/ BLKDEV_ZERO_NOUNMAP
 allocate
 py_fallocate FALLOC_FL_ZERO_RANGE\|FALLOC_FL_KEEP_SIZE $((OBJECT_SIZE / 2))
