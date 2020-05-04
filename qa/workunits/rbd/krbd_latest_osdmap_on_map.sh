@@ -20,7 +20,7 @@ for ((i = 0; i < $NUM_ITER; i++)); do
     run_test
 done
 
-rbd create --size 1 img
+rbd create --size 1 img --image-feature layering
 DEV=$(sudo rbd map img)
 for ((i = 0; i < $NUM_ITER; i++)); do
     run_test
