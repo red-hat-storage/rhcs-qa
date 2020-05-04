@@ -1,0 +1,33 @@
+tasks:
+- ssh-keys: null
+- rhceph_ansible:
+    cluster: c1
+- rhceph_ansible:
+    cluster: c2
+- install.ship_utilities: null
+- new-rgw-multisite:
+   realm:
+     name: test-realm
+     is_default: true
+   zonegroups:
+     - name: test-zg
+       is_master: true
+       is_default: true
+       zones:
+         - name: test-zone
+           is_master: true
+           is_default: true
+           endpoints: [c1.rgw.0]
+         - name: test-zone2
+           is_default: true
+           endpoints: [c2.rgw.1]
+- multisite-test:
+      test_name: test_swift_basic_ops
+      script_name: test_swift_basic_ops
+      test_dir_version: v2
+      test_client: c1.rgw.0
+- sleep:
+      duration: 120
+- multisite-test.pull-io-info:
+- verify-io:
+      verification_script: read_io_info
