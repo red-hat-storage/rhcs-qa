@@ -1,0 +1,53 @@
+overrides:
+  rhceph_ansible:
+    vars:
+      ceph_conf_overrides:
+        global:
+          osd crush chooseleaf type: 0
+          osd_default_pool_size: 3
+          osd_pool_default_pg_num: 8
+          osd_pool_default_pgp_num: 8
+          osd pool default size: 1
+          osd pool default min size: 1
+roles:
+- [c1.mon.a, c1.mds.a, c1.mgr.z, c1.osd.0, c1.osd.1, c1.osd.2, c1.rgw.0, c1.client.0]
+- [c2.mon.a, c2.mds.a, c2.mgr.z, c2.osd.0, c2.osd.1, c2.osd.2, c2.rgw.0, c2.client.0]
+tasks:
+- ssh-keys: null
+- rhceph_ansible:
+    cluster: c1
+    vars:
+      rgw_multisite: true
+    host_vars:
+      c1.rgw.0:
+        rgw_zone: zone_master
+        rgw_zonegroup: zongroup_master
+        rgw_realm: realm1
+        rgw_zonemaster: true
+        rgw_zonesecondary: false
+        rgw_zonegroupmaster: true
+        rgw_zone_user: user1
+        rgw_zone_user_display_name: "zone_master_user1"
+        system_access_key: user1
+        system_secret_key: user1
+        rgw_multisite_proto: "http"
+        radosgw_frontend_port: 8080
+- rhceph_ansible:
+    cluster: c2
+    vars:
+      rgw_multisite: true
+    host_vars:
+      c2.rgw.0:
+        rgw_zone: zone_secondary
+        rgw_zonegroup: zongroup_master
+        rgw_realm: realm1
+        rgw_zonemaster: false
+        rgw_zonesecondary: true
+        rgw_zonegroupmaster: false
+        rgw_zone_user: user1
+        rgw_zone_user_display_name: "zone_master_user1"
+        system_access_key: user1
+        system_secret_key: user1
+        rgw_pull_proto: http
+        rgw_pull_port: 8080
+        rgw_pullhost: c1.rgw.0

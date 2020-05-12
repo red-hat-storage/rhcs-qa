@@ -83,6 +83,8 @@ class CephAnsible(Task):
         self.playbook = None
         self.cluster_groups_to_roles = None
         self.ready_cluster = None
+        self.custom_host_vars = self.config.get('host_vars', dict())
+
         if 'playbook' in config:
             self.playbook = self.config['playbook']
         if 'repo' not in config:
@@ -190,8 +192,7 @@ class CephAnsible(Task):
         # If there is an installer.0 node, use that for the installer.
         # Otherwise, use the first mon node as installer node.
         ansible_loc = self.each_cluster.only('installer.0')
-#        self.each_cluster = self.each_cluster.only(lambda role: role.startswith(self.cluster_name))
-#        self.remove_cluster_prefix()
+
         (ceph_first_mon,) = self.ctx.cluster.only(misc.get_first_mon(
             self.ctx, self.config, self.cluster_name)).remotes.iterkeys()
 
@@ -203,14 +204,14 @@ class CephAnsible(Task):
         self.installer = ceph_installer
         self.ceph_installer = self.installer
         self.args = args
+
         # ship utilities files
         self._ship_utilities()
-        if self.config.get('rhbuild'):
-            self.run_rh_playbook()
-            if self.config.get('haproxy', False):
-                self.run_haproxy()
-        else:
-            self.run_playbook()
+
+        self.run_rh_playbook()
+        if self.config.get('haproxy', False):
+            self.run_haproxy()
+
         '''Redundant call but required for coverage'''
         self._ship_utilities()
 
@@ -229,7 +230,18 @@ class CephAnsible(Task):
             for (remote, roles) in self.each_cluster.only(
                     want).remotes.iteritems():
                 hostname = remote.hostname
-                host_vars = self.get_host_vars(remote)
+
+                # get required host vars
+                host_vars = self.get_host_vars(remote, role_prefix)
+
+                # get custom host vars
+                custom_host_vars = \
+                    self.get_custom_host_vars(hostname, roles, role_prefix)
+
+                # update custom host vars
+                if custom_host_vars:
+                    host_vars.update(custom_host_vars)
+
                 if group not in hosts_dict:
                     hosts_dict[group] = {hostname: host_vars}
                 elif hostname not in hosts_dict[group]:
@@ -584,7 +596,13 @@ class CephAnsible(Task):
 
         return disks
 
-    def get_host_vars(self, remote):
+    def get_host_vars(self, remote, role):
+        """
+        Method to get host vars
+        Args:
+            remote: remote node
+            role: ceph role
+        """
         extra_vars = self.config.get('vars', dict())
         host_vars = dict()
 
@@ -593,7 +611,7 @@ class CephAnsible(Task):
              please choose machine types which has sufficient disks"""
 
         # check for OSD auto-discovery
-        if not extra_vars.get('osd_auto_discovery', False):
+        if "osd" in role and not extra_vars.get('osd_auto_discovery', False):
             roles = self.each_cluster.remotes[remote]
             dev_needed = len([role for role in roles
                               if role.startswith('osd')])
@@ -644,15 +662,163 @@ class CephAnsible(Task):
 
         if 'monitor_interface' not in extra_vars:
             host_vars['monitor_interface'] = remote.interface
-        if 'radosgw_interface' not in extra_vars:
+        if "rgw" in role and 'radosgw_interface' not in extra_vars:
             host_vars['radosgw_interface'] = remote.interface
         if 'public_network' not in extra_vars:
             host_vars['public_network'] = remote.cidr
+
         return host_vars
 
+    def get_host_by_role(self, role):
+        """
+        Method to get host by role
+        Args:
+            role: role name
+        Returns:
+            remote: remote host object
+        """
+        for remote, roles in self.ctx.cluster.remotes.items():
+            if role in roles:
+                return remote
+
+    def get_node_role_map(self, roles):
+        """
+        Method to map host based on role list
+        Args:
+            roles: list of roles as defined in "roles.yaml"
+        Returns:
+            node_role_map: role mapped with node dictionary
+        """
+        # get node by role and map it with role
+        node_role_map = dict()
+
+        for role in roles:
+            node_role_map[role] = self.get_host_by_role(role)
+
+        return node_role_map
+
+    def get_custom_host_vars(self, remote, roles, role):
+        """
+        Method to get user custom host vars from config
+        Args:
+            remote: remote node
+            roles: roles associated with remote
+            role: ceph role
+        Returns:
+            data: custom host vars from config
+        """
+        try:
+            # check for custom host vars config
+            assert self.custom_host_vars
+
+            # check for current role present in custom host vars
+            assert [i for i in self.custom_host_vars if role in i]
+
+            # get role-node map
+            node_role_map = self.get_node_role_map(self.custom_host_vars.keys())
+
+            # get custom host vars for particular role and node
+            for rol, node in node_role_map.items():
+                if remote == node.hostname:
+                    for i in roles:
+                        if i in rol:
+                            data = self.custom_host_vars[rol]
+
+                            # add definition(s) as below
+                            #   to resolve host var attributes
+
+                            # check for rgw multi-site
+                            data = self.check_multi_site_attributes(data)
+
+                            return data
+        except AssertionError:
+            pass
+        return dict()
+
+    def check_multi_site_attributes(self, data):
+        """
+        Method to check rgw multi-site attributes
+            and resolve host-name for certain attributes
+        Args:
+            data: rgw host var data
+        """
+        # add check(s) and resolve any rgw host vars attributes here
+
+        # assign rgw pull hostname
+        if data.get('rgw_pullhost'):
+            data['rgw_pullhost'] = \
+                self.get_host_by_role(data['rgw_pullhost']).hostname
+
+        return data
+
+    def check_multi_site(self, installer):
+        """
+        Method to setup multi-site environment
+        Args:
+            installer: ansible node
+        """
+        host_vars_path = os.path.join(self.ansible_path, "host_vars")
+
+        try:
+            host_vars = self.config.get('host_vars', False)
+            assert host_vars, "multi-site is not requested"
+
+            # create host vars directory
+            installer.run(args=['mkdir',
+                                run.Raw("-p"),
+                                run.Raw(host_vars_path)])
+
+            for host, data in host_vars.items():
+                # create host var file with node name
+                host_var_file_name = os.path.join(host_vars_path,
+                                                  self.get_host(host).shortname)
+
+                installer.run(args=[
+                    'touch',
+                    run.Raw(host_var_file_name)
+                ])
+
+                # assign rgw pull hostname
+                if data.get('rgw_pullhost'):
+                    data['rgw_pullhost'] =\
+                        self.get_host(data['rgw_pullhost']).hostname
+
+                # write host var file
+                host_var = yaml.dump(data, default_flow_style=False)
+                host_vars_file = self._write_hosts_file(
+                    prefix='teuth_ansible_host_var', content=host_var)
+
+                # copy host var file to ansible node
+                installer.put_file(
+                    host_vars_file,
+                    host_var_file_name
+                )
+
+                # print host var file content
+                installer.run(args=["cat", run.Raw(host_var_file_name)])
+
+                # remove temporary host var file
+                os.remove(host_vars_file)
+
+        except AssertionError as msg:
+            log.info(msg)
+
     def run_rh_playbook(self):
+        """
+        Method to run ceph-ansible
+        """
         args = self.args
+
+        # get ceph installer remote node
         ceph_installer = self.ceph_installer
+
+        # Get ansible path
+        self.ansible_path = os.path.join(
+            ceph_installer.sh("echo $HOME").strip(),
+            "ceph-ansible"
+        )
+        log.info("ceph ansible path: {}".format(self.ansible_path))
+
         from tasks.set_repo import GA_BUILDS, set_cdn_repo
         rhbuild = self.config.get('rhbuild')
 
@@ -685,6 +851,10 @@ class CephAnsible(Task):
             '/usr/share/ceph-ansible',
             '.'
         ])
+
+        # Check for multi-site configuration
+        # self.check_multi_site(ceph_installer)
+
         self._copy_and_print_config()
         self._generate_client_config()
         self.start_firewalld()
@@ -698,6 +868,18 @@ class CephAnsible(Task):
             ],
             timeout=4200,
         )
+
+        # print rgw multi-site sync status, if configured
+        if self.config.get('vars', dict()).get("rgw_multisite"):
+            ceph_installer.run(
+                args=[
+                    'sudo',
+                    'radosgw-admin',
+                    'sync',
+                    'status'
+                ]
+            )
+
         self.ready_cluster = self.each_cluster
         log.info('Ready_cluster {}'.format(self.ready_cluster))
         self._ship_utilities()
@@ -783,111 +965,6 @@ class CephAnsible(Task):
                 run.Raw(str_args)
             ]
         )
-
-    def run_playbook(self):
-        # setup ansible on first mon node
-        ceph_installer = self.ceph_installer
-        args = self.args
-        if ceph_installer.os.package_type == 'rpm':
-            # handle selinux init issues during purge-cluster
-            # https://bugzilla.redhat.com/show_bug.cgi?id=1364703
-            ceph_installer.run(
-                args=[
-                    'sudo', 'yum', 'remove', '-y', 'libselinux-python'
-                ]
-            )
-            # install crypto/selinux packages for ansible
-            ceph_installer.run(args=[
-                'sudo',
-                'yum',
-                'install',
-                '-y',
-                'libffi-devel',
-                'python-devel',
-                'openssl-devel',
-                'libselinux-python'
-            ])
-        else:
-            # update ansible from ppa
-            ceph_installer.run(args=[
-                'sudo',
-                'add-apt-repository',
-                run.Raw('ppa:ansible/ansible'),
-            ])
-            ceph_installer.run(args=[
-                'sudo',
-                'apt-get',
-                'update',
-            ])
-            ceph_installer.run(args=[
-                'sudo',
-                'apt-get',
-                'install',
-                '-y',
-                'ansible',
-                'libssl-dev',
-                'python-openssl',
-                'libffi-dev',
-                'python-dev'
-            ])
-        ansible_repo = self.config['repo']
-        branch = 'master'
-        if self.config.get('branch'):
-            branch = self.config.get('branch')
-        ansible_ver = 'ansible==2.5'
-        if self.config.get('ansible-version'):
-            ansible_ver = 'ansible==' + self.config.get('ansible-version')
-        ceph_installer.run(
-            args=[
-                'rm',
-                '-rf',
-                run.Raw('~/ceph-ansible'),
-            ],
-            check_status=False
-        )
-        ceph_installer.run(args=[
-            'mkdir',
-            run.Raw('~/ceph-ansible'),
-            run.Raw(';'),
-            'git',
-            'clone',
-            run.Raw('-b %s' % branch),
-            run.Raw(ansible_repo),
-        ])
-        self._copy_and_print_config()
-        str_args = ' '.join(args)
-        ceph_installer.run(args=[
-            run.Raw('cd ~/ceph-ansible'),
-            run.Raw(';'),
-            'virtualenv',
-            run.Raw('--system-site-packages'),
-            'venv',
-            run.Raw(';'),
-            run.Raw('source venv/bin/activate'),
-            run.Raw(';'),
-            'pip',
-            'install',
-            '--upgrade',
-            'pip',
-            run.Raw(';'),
-            'pip',
-            'install',
-            run.Raw('setuptools>=11.3'),
-            run.Raw('notario>=0.0.13'),  # FIXME: use requirements.txt
-            run.Raw('netaddr'),
-            run.Raw(ansible_ver),
-            run.Raw(';'),
-            run.Raw(str_args)
-        ])
-        self._ship_utilities()
-        wait_for_health = self.config.get('wait-for-health', True)
-        if wait_for_health:
-            self.wait_for_ceph_health()
-        # for the teuthology workunits to work we
-        # need to fix the permission on keyring to be readable by them
-        self._create_rbd_pool()
-        self._fix_roles_map()
-        self.fix_keyring_permission()
 
     def _copy_and_print_config(self):
         ceph_installer = self.ceph_installer
