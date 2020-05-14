@@ -7,6 +7,9 @@ openstack:
     size: 10 # GB
 tasks:
 - install:
+   extra_packages:
+     rpm:
+      - socat
 - ceph:
     conf:
       client:
