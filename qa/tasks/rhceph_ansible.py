@@ -72,7 +72,7 @@ class CephAnsible(Task):
         nfss='nfs',
         haproxys='haproxy'
     )
-    groups_to_roles ['grafana-server'] = 'grafana-server'
+    groups_to_roles['grafana-server'] = 'grafana-server'
 
     def __init__(self, ctx, config):
         """
@@ -146,6 +146,11 @@ class CephAnsible(Task):
         # everything from vars in config go into group_vars/all file
         extra_vars = dict()
         extra_vars.update(self.config.get('vars', dict()))
+
+        # support rgw multi-site single realm vars
+        extra_vars.update(self.check_multi_site_attributes(extra_vars))
+
+        # dump the vars in the file
         gvar = yaml.dump(extra_vars, default_flow_style=False)
         self.extra_vars_file = self._write_hosts_file(
             prefix='teuth_ansible_gvar', content=gvar)
@@ -167,7 +172,9 @@ class CephAnsible(Task):
         log.info('updated cluster {}'.format(self.each_cluster))
 
     def start_firewalld(self):
-
+        """
+        Method to start firewalld
+        """
         for remote, roles in self.each_cluster.remotes.iteritems():
             cmd = 'sudo service firewalld start'
             remote.run(
@@ -189,6 +196,7 @@ class CephAnsible(Task):
             '-i', 'inven.yml', 'site.yml'
         ]
         log.debug("Running %s", args)
+
         # If there is an installer.0 node, use that for the installer.
         # Otherwise, use the first mon node as installer node.
         ansible_loc = self.each_cluster.only('installer.0')
@@ -200,6 +208,7 @@ class CephAnsible(Task):
             (ceph_installer,) = ansible_loc.remotes.keys()
         else:
             ceph_installer = ceph_first_mon
+
         self.ceph_first_mon = ceph_first_mon
         self.installer = ceph_installer
         self.ceph_installer = self.installer
@@ -208,6 +217,7 @@ class CephAnsible(Task):
         # ship utilities files
         self._ship_utilities()
 
+        # run ansible playbook
         self.run_rh_playbook()
         if self.config.get('haproxy', False):
             self.run_haproxy()
@@ -272,14 +282,15 @@ class CephAnsible(Task):
             content=hosts_stringio.read().strip())
         self.generated_inventory = True
 
-    def add_osddisk_info(self, ctx, remote, json_dir, json_list):
-        '''
+    @staticmethod
+    def add_osddisk_info(ctx, remote, json_dir, json_list):
+        """
         add output of diskinfo json to ctx
         format looks like
         {'osd.id':[{'osd_disk':'details'}, remote]}
         above dict will be added into ctx.osd_disk_info
         this also helps in mapping given osd to remote
-        '''
+        """
         buf = ""
         for ent in json_list:
             if ent == '' or ent == '\n':
@@ -293,10 +304,10 @@ class CephAnsible(Task):
             log.info("added with osd {}".format(my_id))
 
     def get_osd_disk_map(self, ctx, remote):
-        '''
+        """
         Use ceph-volume to fetch all the disk details
         on the given remote
-        '''
+        """
         osddir = '/var/lib/ceph/osd/'
         json_dir = '/etc/ceph/osd/'
         cmd = 'sudo ls ' + osddir
@@ -345,10 +356,10 @@ class CephAnsible(Task):
         self.add_osddisk_info(ctx, remote, json_dir, json_list)
 
     def set_diskinfo_ctx(self):
-        '''
+        """
         This function get create a dict with disk information
         for corresponding osd
-        '''
+        """
         ctx = self.ctx
         r = re.compile("osd.*")
         ctx.osd_disk_info = dict()
@@ -366,7 +377,8 @@ class CephAnsible(Task):
         self.execute_playbook()
 #        self.set_diskinfo_ctx()
 
-    def _write_hosts_file(self, prefix, content):
+    @staticmethod
+    def _write_hosts_file(prefix, content):
         """
         Actually write the hosts file
         """
@@ -740,7 +752,7 @@ class CephAnsible(Task):
         Method to check rgw multi-site attributes
             and resolve host-name for certain attributes
         Args:
-            data: rgw host var data
+            data: rgw vars data
         """
         # add check(s) and resolve any rgw host vars attributes here
 
@@ -750,6 +762,22 @@ class CephAnsible(Task):
                 self.get_host_by_role(data['rgw_pullhost']).hostname
 
         return data
+
+    def display_multisite_status(self):
+        """
+        Method to display multi-site status
+        """
+        # avoiding debug log msgs from realm list command response
+        realm_list_cmd = "sudo radosgw-admin realm list  --format json 2> echo"
+        realm_list = self.ceph_first_mon.sh(realm_list_cmd)
+
+        try:
+            realms = json.loads(realm_list.strip())
+            for realm in realms.get('realms'):
+                cmd = "sudo radosgw-admin sync status --rgw-realm {realm}"
+                self.ceph_first_mon.sh(cmd.format(realm=realm))
+        except Exception as err:
+            log.warn(err)
 
     def run_rh_playbook(self):
         """
@@ -816,14 +844,7 @@ class CephAnsible(Task):
 
         # print rgw multi-site sync status, if configured
         if self.config.get('vars', dict()).get("rgw_multisite"):
-            ceph_installer.run(
-                args=[
-                    'sudo',
-                    'radosgw-admin',
-                    'sync',
-                    'status'
-                ]
-            )
+            self.display_multisite_status()
 
         self.ready_cluster = self.each_cluster
         log.info('Ready_cluster {}'.format(self.ready_cluster))

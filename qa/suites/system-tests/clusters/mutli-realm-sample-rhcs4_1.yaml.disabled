@@ -1,0 +1,82 @@
+overrides:
+  rhceph_ansible:
+    rhbuild: '4.1'
+    vars:
+      rgw_multisite: true
+      ceph_conf_overrides:
+        global:
+          osd crush chooseleaf type: 0
+          osd_default_pool_size: 3
+          osd_pool_default_pg_num: 8
+          osd_pool_default_pgp_num: 8
+          osd pool default size: 1
+          osd pool default min size: 1
+roles:
+- [c1.mon.a, c1.mds.a, c1.mgr.z, c1.osd.0, c1.osd.1, c1.osd.2, c1.rgw.0, c1.client.0]
+- [c1.mon.b, c1.mds.b, c1.mgr.y, c1.osd.3, c1.osd.4, c1.osd.5, c1.rgw.1, c1.client.1]
+- [c2.mon.a, c2.mds.a, c2.mgr.z, c2.osd.0, c2.osd.1, c2.osd.2, c2.rgw.0, c2.client.0]
+- [c2.mon.b, c2.mds.b, c2.mgr.y, c2.osd.3, c2.osd.4, c2.osd.5, c2.rgw.1, c2.client.1]
+tasks:
+- ssh-keys: null
+- rhceph_ansible:
+    cluster: c1
+    host_vars:
+      c1.rgw.0:
+        rgw_zone: zone_master1
+        rgw_zonegroup: zongroup_master1
+        rgw_realm: realm1
+        rgw_zonemaster: true
+        rgw_zonesecondary: false
+        rgw_zonegroupmaster: true
+        rgw_zone_user: user1
+        rgw_zone_user_display_name: "zone_master_user1"
+        system_access_key: user1
+        system_secret_key: user1
+        rgw_multisite_proto: "http"
+        radosgw_frontend_port: 8080
+      c1.rgw.1:
+        rgw_zone: zone_master2
+        rgw_zonegroup: zongroup_master2
+        rgw_realm: realm2
+        rgw_zonemaster: true
+        rgw_zonesecondary: false
+        rgw_zonegroupmaster: true
+        rgw_zone_user: user2
+        rgw_zone_user_display_name: "zone_master_user2"
+        system_access_key: user2
+        system_secret_key: user2
+        rgw_multisite_proto: "http"
+        radosgw_frontend_port: 8080
+- rhceph_ansible:
+    cluster: c2
+    host_vars:
+      c2.rgw.0:
+        rgw_zone: zone_secondary1
+        rgw_zonegroup: zongroup_master1
+        rgw_realm: realm1
+        rgw_zonemaster: false
+        rgw_zonesecondary: true
+        rgw_zonegroupmaster: false
+        rgw_zone_user: user1
+        rgw_zone_user_display_name: "zone_master_user1"
+        system_access_key: user1
+        system_secret_key: user1
+        rgw_multisite_proto: "http"
+        rgw_pull_proto: "http"
+        rgw_pull_port: 8080
+        rgw_pullhost: c1.rgw.0
+      c2.rgw.1:
+        rgw_zone: zone_secondary2
+        rgw_zonegroup: zongroup_master2
+        rgw_realm: realm2
+        rgw_zonemaster: false
+        rgw_zonesecondary: true
+        rgw_zonegroupmaster: false
+        rgw_zone_user: user2
+        rgw_zone_user_display_name: "zone_master_user2"
+        system_access_key: user2
+        system_secret_key: user2
+        rgw_multisite_proto: "http"
+        rgw_pull_proto: "http"
+        rgw_pull_port: 8080
+        rgw_pullhost: c1.rgw.1
