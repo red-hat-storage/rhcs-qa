@@ -1,0 +1,38 @@
+overrides:
+  rhceph_ansible:
+    vars:
+      rgw_multisite: true
+tasks:
+- ssh-keys: null
+- rhceph_ansible:
+    cluster: c1
+    vars:
+      rgw_zone: zone_master
+      rgw_zonegroup: zongroup_master
+      rgw_realm: realm1
+      rgw_zonemaster: true
+      rgw_zonesecondary: false
+      rgw_zonegroupmaster: true
+      rgw_zone_user: user1
+      rgw_zone_user_display_name: "zone_master_user1"
+      system_access_key: user1
+      system_secret_key: user1
+      rgw_multisite_proto: "http"
+      radosgw_frontend_port: 8080
+- rhceph_ansible:
+    cluster: c2
+    vars:
+      rgw_zone: zone_secondary
+      rgw_zonegroup: zongroup_master
+      rgw_realm: realm1
+      rgw_zonemaster: false
+      rgw_zonesecondary: true
+      rgw_zonegroupmaster: false
+      rgw_zone_user: user1
+      rgw_zone_user_display_name: "zone_master_user1"
+      system_access_key: user1
+      system_secret_key: user1
+      rgw_multisite_proto: "http"
+      rgw_pull_proto: "http"
+      rgw_pull_port: 8080
+      rgw_pullhost: c1.rgw.0
