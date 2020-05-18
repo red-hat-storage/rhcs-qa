@@ -325,7 +325,8 @@ def _run_tests(ctx, refspec, role, tests, env, basedir,
     srcdir = '{cdir}/{basedir}'.format(cdir=clonedir,
                                        basedir=basedir)
 
-    git_url = teuth_config.get_ceph_qa_suite_git_url()
+    #git_url = teuth_config.get_ceph_qa_suite_git_url()
+    git_url = 'https://github.com/red-hat-storage/ceph.git'
     # if we are running an upgrade test, and ceph-ci does not have branches like
     # `jewel`, so should use ceph.git as an alternative.
     try:

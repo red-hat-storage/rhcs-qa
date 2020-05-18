@@ -26,7 +26,7 @@ s3_bucket_quota.pl takes the following arguments:
    (optional) Displays the usage message.
 
 =cut
-
+use lib '/root/perl5/lib/perl5/Amazon';
 use Amazon::S3;
 use Data::Dumper;
 #use strict;

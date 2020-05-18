@@ -27,9 +27,9 @@ class Refspec:
     def clone(self, git_url, clonedir):
         return (self._clone(git_url, clonedir) +
                 [run.Raw('&&')] +
-                self._cd(clonedir) +
-                [run.Raw('&&')] +
-                self._checkout())
+                self._cd(clonedir)) # +
+                #[run.Raw('&&')] +
+                #self._checkout())
 
 
 class Branch(Refspec):
