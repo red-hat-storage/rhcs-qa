@@ -52,6 +52,12 @@ def task(ctx, config):
     rgw_remote = ctx.cluster.only(teuthology.is_type('rgw'))
     rgw = [remote for remote, roles_for_host in rgw_remote.remotes.iteritems()]
 
+    # installing nfs-ganesha-selinux package
+    if rgw[0].os.version.startswith('7'):
+        rgw[0].run(args=['sudo', 'yum', 'install',
+                         '-y',
+                         'nfs-ganesha-selinux'])
+
     # clone the repo
 
     rgw[0].run(args=['sudo', 'rm', '-rf', 'nfs_ganesha_rgw'], check_status=False)
