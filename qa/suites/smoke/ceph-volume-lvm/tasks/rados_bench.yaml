@@ -1,0 +1,30 @@
+overrides:
+  ceph:
+    conf:
+      global:
+        mon warn on pool pg num not power of two: false
+        mon_warn_on_pool_pg_num_not_power_of_two: false
+        ms inject delay max: 1
+        ms inject delay probability: 0.005
+        ms inject delay type: osd
+        ms inject internal delays: 0.002
+        ms inject socket failures: 2500
+tasks:
+- install: null
+- ceph:
+    fs: xfs
+    log-whitelist:
+      - overall HEALTH_
+      - \(OSDMAP_FLAGS\)
+      - \(OSD_
+      - \(PG_
+      - \(POOL_
+      - \(CACHE_POOL_
+      - \(SMALLER_PGP_NUM\)
+      - \(OBJECT_
+      - \(REQUEST_SLOW\)
+      - \(TOO_FEW_PGS\)
+      - \(POOL_PG_NUM_NOT_POWER_OF_TWO\)
+- radosbench:
+    clients: [client.0]
+    time: 150
