@@ -28,6 +28,7 @@ from teuthology import exceptions
 from teuthology.orchestra import run
 import tasks.ceph_client as cclient
 from teuthology.orchestra.daemon import DaemonGroup
+from tasks.daemonwatchdog import DaemonWatchdog
 
 CEPH_ROLE_TYPES = ['mon', 'mgr', 'osd', 'mds', 'rgw']
 DATA_PATH = '/var/lib/ceph/{type_}/{cluster}-{id_}'
@@ -313,12 +314,10 @@ def valgrind_post(ctx, config):
         for remote in ctx.cluster.remotes.keys():
             # look at valgrind logs for each node
             proc = remote.run(
-                args=[
-                    'sudo zgrep <kind> /var/log/ceph/valgrind/* ',
-                    # include a second file so that we always get
-                    # a filename prefix on the output
-                    '/dev/null | sort | uniq',
-                ],
+                args="sudo zgrep '<kind>' /var/log/ceph/valgrind/* "
+                     # include a second file so that we always get
+                     # a filename prefix on the output
+                     "/dev/null | sort | uniq",
                 wait=False,
                 check_status=False,
                 stdout=BytesIO(),
@@ -394,8 +393,6 @@ def create_rbd_pool(ctx, config):
 @contextlib.contextmanager
 def cephfs_setup(ctx, config):
     cluster_name = config['cluster']
-    testdir = teuthology.get_testdir(ctx)
-    coverage_dir = '{tdir}/archive/coverage'.format(tdir=testdir)
 
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
     (mon_remote,) = ctx.cluster.only(first_mon).remotes.keys()
@@ -414,6 +411,12 @@ def cephfs_setup(ctx, config):
 
     yield
 
+@contextlib.contextmanager
+def watchdog_setup(ctx, config):
+    ctx.ceph[config['cluster']].thrashers = []
+    ctx.ceph[config['cluster']].watchdog = DaemonWatchdog(ctx, config, ctx.ceph[config['cluster']].thrashers)
+    ctx.ceph[config['cluster']].watchdog.start()
+    yield
 
 def get_mons(roles, ips, cluster_name,
              mon_bind_msgr2=False,
@@ -424,7 +427,6 @@ def get_mons(roles, ips, cluster_name,
     mons = {}
     v1_ports = {}
     v2_ports = {}
-    mon_id = 0
     is_mon = teuthology.is_type('mon', cluster_name)
     for idx, roles in enumerate(roles):
         for role in roles:
@@ -456,7 +458,6 @@ def get_mons(roles, ips, cluster_name,
                     ip=ips[idx],
                     port=v1_ports[ips[idx]],
                 )
-            mon_id += 1
             mons[role] = addr
     assert mons
     return mons
@@ -594,44 +595,20 @@ def cluster(ctx, config):
 
     devs_to_clean = {}
     remote_to_roles_to_devs = {}
-    remote_to_roles_to_journals = {}
     osds = ctx.cluster.only(teuthology.is_type('osd', cluster_name))
     for remote, roles_for_host in osds.remotes.items():
         devs = teuthology.get_scratch_devices(remote)
-        roles_to_devs = {}
-        roles_to_journals = {}
-        if config.get('fs'):
-            log.info('fs option selected, checking for scratch devs')
-            log.info('found devs: %s' % (str(devs),))
-            devs_id_map = teuthology.get_wwn_id_map(remote, devs)
-            iddevs = list(devs_id_map.values())
-            roles_to_devs = assign_devs(
-                teuthology.cluster_roles_of_type(roles_for_host, 'osd', cluster_name), iddevs
-            )
-            if len(roles_to_devs) < len(iddevs):
-                iddevs = iddevs[len(roles_to_devs):]
-            devs_to_clean[remote] = []
-
-        if config.get('block_journal'):
-            log.info('block journal enabled')
-            roles_to_journals = assign_devs(
-                teuthology.cluster_roles_of_type(roles_for_host, 'osd', cluster_name), iddevs
-            )
-            log.info('journal map: %s', roles_to_journals)
-
-        if config.get('tmpfs_journal'):
-            log.info('tmpfs journal enabled')
-            roles_to_journals = {}
-            remote.run(args=['sudo', 'mount', '-t', 'tmpfs', 'tmpfs', '/mnt'])
-            for role in teuthology.cluster_roles_of_type(roles_for_host, 'osd', cluster_name):
-                tmpfs = '/mnt/' + role
-                roles_to_journals[role] = tmpfs
-                remote.run(args=['truncate', '-s', '1500M', tmpfs])
-            log.info('journal map: %s', roles_to_journals)
-
-        log.info('dev map: %s' % (str(roles_to_devs),))
+        roles_to_devs = assign_devs(
+            teuthology.cluster_roles_of_type(roles_for_host, 'osd', cluster_name), devs
+        )
+        devs_to_clean[remote] = []
+        log.info('osd dev map: {}'.format(roles_to_devs))
+        assert roles_to_devs, \
+            "remote {} has osd roles, but no osd devices were specified!".format(remote.hostname)
         remote_to_roles_to_devs[remote] = roles_to_devs
-        remote_to_roles_to_journals[remote] = roles_to_journals
+    log.info("remote_to_roles_to_devs: {}".format(remote_to_roles_to_devs))
+    for osd_role, dev_name in remote_to_roles_to_devs.items():
+        assert dev_name, "{} has no associated device!".format(osd_role)
 
     log.info('Generating config...')
     remotes_and_roles = ctx.cluster.remotes.items()
@@ -645,21 +622,12 @@ def cluster(ctx, config):
     conf = skeleton_config(
         ctx, roles=roles, ips=ips, mons=mons, cluster=cluster_name,
     )
-    for remote, roles_to_journals in remote_to_roles_to_journals.items():
-        for role, journal in roles_to_journals.items():
-            name = teuthology.ceph_role(role)
-            if name not in conf:
-                conf[name] = {}
-            conf[name]['osd journal'] = journal
     for section, keys in config['conf'].items():
         for key, value in keys.items():
             log.info("[%s] %s = %s" % (section, key, value))
             if section not in conf:
                 conf[section] = {}
             conf[section][key] = value
-
-    if config.get('tmpfs_journal'):
-        conf['journal dio'] = False
 
     if not hasattr(ctx, 'ceph'):
         ctx.ceph = {}
@@ -837,20 +805,16 @@ def cluster(ctx, config):
         ctx.disk_config = argparse.Namespace()
     if not hasattr(ctx.disk_config, 'remote_to_roles_to_dev'):
         ctx.disk_config.remote_to_roles_to_dev = {}
-    if not hasattr(ctx.disk_config, 'remote_to_roles_to_journals'):
-        ctx.disk_config.remote_to_roles_to_journals = {}
     if not hasattr(ctx.disk_config, 'remote_to_roles_to_dev_mount_options'):
         ctx.disk_config.remote_to_roles_to_dev_mount_options = {}
     if not hasattr(ctx.disk_config, 'remote_to_roles_to_dev_fstype'):
         ctx.disk_config.remote_to_roles_to_dev_fstype = {}
 
     teuthology.deep_merge(ctx.disk_config.remote_to_roles_to_dev, remote_to_roles_to_devs)
-    teuthology.deep_merge(ctx.disk_config.remote_to_roles_to_journals, remote_to_roles_to_journals)
 
     log.info("ctx.disk_config.remote_to_roles_to_dev: {r}".format(r=str(ctx.disk_config.remote_to_roles_to_dev)))
     for remote, roles_for_host in osds.remotes.items():
         roles_to_devs = remote_to_roles_to_devs[remote]
-        roles_to_journals = remote_to_roles_to_journals[remote]
 
         for role in teuthology.cluster_roles_of_type(roles_for_host, 'osd', cluster_name):
             _, _, id_ = teuthology.split_role(role)
@@ -863,9 +827,8 @@ def cluster(ctx, config):
                     '-p',
                     mnt_point,
                 ])
-            log.info(str(roles_to_devs))
-            log.info(str(roles_to_journals))
-            log.info(role)
+            log.info('roles_to_devs: {}'.format(roles_to_devs))
+            log.info('role: {}'.format(role))
             if roles_to_devs.get(role):
                 dev = roles_to_devs[role]
                 fs = config.get('fs')
@@ -1166,14 +1129,6 @@ def cluster(ctx, config):
                     ])
                     raise e
 
-        if config.get('tmpfs_journal'):
-            log.info('tmpfs journal enabled - unmounting tmpfs at /mnt')
-            for remote, roles_for_host in osds.remotes.items():
-                remote.run(
-                    args=['sudo', 'umount', '-f', '/mnt'],
-                    check_status=False,
-                )
-
         if ctx.archive is not None and \
                 not (ctx.config.get('archive-on-error') and ctx.summary['success']):
 
@@ -1238,7 +1193,11 @@ def osd_scrub_pgs(ctx, config):
         unclean = [stat['pgid'] for stat in stats if 'active+clean' not in stat['state']]
         split_merge = []
         osd_dump = manager.get_osd_dump_json()
-        split_merge = [i['pool_name'] for i in osd_dump['pools'] if i['pg_num'] != i['pg_num_target']]
+        try:
+            split_merge = [i['pool_name'] for i in osd_dump['pools'] if i['pg_num'] != i['pg_num_target']]
+        except KeyError:
+            # we don't support pg_num_target before nautilus
+            pass
         if not unclean and not split_merge:
             all_clean = True
             break
@@ -1269,20 +1228,23 @@ def osd_scrub_pgs(ctx, config):
         timez = [(stat['pgid'],stat['last_scrub_stamp']) for stat in stats]
         loop = False
         thiscnt = 0
+        re_scrub = []
         for (pgid, tmval) in timez:
-            pgtm = time.strptime(tmval[0:tmval.find('.')], '%Y-%m-%d %H:%M:%S')
+            t = tmval[0:tmval.find('.')].replace(' ', 'T')
+            pgtm = time.strptime(t, '%Y-%m-%dT%H:%M:%S')
             if pgtm > check_time_now:
                 thiscnt += 1
             else:
                 log.info('pgid %s last_scrub_stamp %s %s <= %s', pgid, tmval, pgtm, check_time_now)
                 loop = True
+                re_scrub.append(pgid)
         if thiscnt > prev_good:
             prev_good = thiscnt
             gap_cnt = 0
         else:
             gap_cnt += 1
             if gap_cnt % 6 == 0:
-                for (pgid, tmval) in timez:
+                for pgid in re_scrub:
                     # re-request scrub every so often in case the earlier
                     # request was missed.  do not do it every time because
                     # the scrub may be in progress or not reported yet and
@@ -1305,7 +1267,7 @@ def run_daemon(ctx, config, type_):
 
     :param ctx: Context
     :param config: Configuration
-    :paran type_: Role type
+    :param type_: Role type
     """
     cluster_name = config['cluster']
     log.info('Starting %s daemons in cluster %s...', type_, cluster_name)
@@ -1418,6 +1380,13 @@ def run_daemon(ctx, config, type_):
                 role = cluster_name + '.' + type_
                 ctx.daemons.get_daemon(type_, id_, cluster_name).restart()
 
+    # kludge: run any pre-manager commands
+    if type_ == 'mon':
+        for cmd in config.get('pre-mgr-commands', []):
+            firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
+            (remote,) = ctx.cluster.only(firstmon).remotes.keys()
+            remote.run(args=cmd.split(' '))
+
     try:
         yield
     finally:
@@ -1440,14 +1409,7 @@ def healthy(ctx, config):
     except (run.CommandFailedError, AssertionError) as e:
         log.info('ignoring mgr wait error, probably testing upgrade: %s', e)
 
-    firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
-    teuthology.wait_until_osds_up(
-        ctx,
-        cluster=ctx.cluster,
-        remote=mon0_remote,
-        ceph_cluster=cluster_name,
-    )
+    manager.wait_for_all_osds_up(timeout=300)
 
     try:
         manager.flush_all_pg_stats()
@@ -1457,34 +1419,12 @@ def healthy(ctx, config):
 
     if config.get('wait-for-healthy', True):
         log.info('Waiting until ceph cluster %s is healthy...', cluster_name)
-        teuthology.wait_until_healthy(
-            ctx,
-            remote=mon0_remote,
-            ceph_cluster=cluster_name,
-        )
+        manager.wait_until_healthy(timeout=300)
 
     if ctx.cluster.only(teuthology.is_type('mds', cluster_name)).remotes:
         # Some MDSs exist, wait for them to be healthy
         ceph_fs = Filesystem(ctx) # TODO: make Filesystem cluster-aware
         ceph_fs.wait_for_daemons(timeout=300)
-
-
-def wait_for_osds_up(ctx, config):
-    """
-    Wait for all osd's to come up.
-
-    :param ctx: Context
-    :param config: Configuration
-    """
-    log.info('Waiting until ceph osds are all up...')
-    cluster_name = config.get('cluster', 'ceph')
-    firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
-    teuthology.wait_until_osds_up(
-        ctx,
-        cluster=ctx.cluster,
-        remote=mon0_remote
-    )
 
 
 def wait_for_mon_quorum(ctx, config):
@@ -1522,42 +1462,32 @@ def created_pool(ctx, config):
     """
     for new_pool in config:
         if new_pool not in ctx.managers['ceph'].pools:
-            ctx.managers['ceph'].pools[new_pool] = ctx.managers['ceph'].get_pool_property(
+            ctx.managers['ceph'].pools[new_pool] = ctx.managers['ceph'].get_pool_int_property(
                 new_pool, 'pg_num')
 
 
 @contextlib.contextmanager
-def tweaked_option(ctx, config):
+def suppress_mon_health_to_clog(ctx, config):
     """
-    set an option, and then restore it with its original value
+    set the option, and then restore it with its original value
 
     Note, due to the way how tasks are executed/nested, it's not suggested to
     use this method as a standalone task. otherwise, it's likely that it will
     restore the tweaked option at the /end/ of 'tasks' block.
     """
-    saved_options = {}
-    # we can complicate this when necessary
-    options = ['mon-health-to-clog']
-    type_, id_ = 'mon', '*'
-    cluster = config.get('cluster', 'ceph')
-    manager = ctx.managers[cluster]
-    if id_ == '*':
-        get_from = next(teuthology.all_roles_of_type(ctx.cluster, type_))
+    if config.get('mon-health-to-clog', 'true') == 'false':
+        saved_options = {}
+        cluster = config.get('cluster', 'ceph')
+        manager = ctx.managers[cluster]
+        manager.raw_cluster_command(
+            'config', 'set', 'mon', 'mon_health_to_clog', 'false'
+        )
+        yield
+        manager.raw_cluster_command(
+            'config', 'rm', 'mon', 'mon_health_to_clog'
+        )
     else:
-        get_from = id_
-    for option in options:
-        if option not in config:
-            continue
-        value = 'true' if config[option] else 'false'
-        option = option.replace('-', '_')
-        old_value = manager.get_config(type_, get_from, option)
-        if value != old_value:
-            saved_options[option] = old_value
-            manager.inject_args(type_, id_, option, value)
-    yield
-    for option, value in saved_options.items():
-        manager.inject_args(type_, id_, option, value)
-
+        yield
 
 @contextlib.contextmanager
 def restart(ctx, config):
@@ -1591,27 +1521,21 @@ def restart(ctx, config):
     daemons = ctx.daemons.resolve_role_list(config.get('daemons', None), CEPH_ROLE_TYPES, True)
     clusters = set()
 
-    with tweaked_option(ctx, config):
+    with suppress_mon_health_to_clog(ctx, config):
         for role in daemons:
             cluster, type_, id_ = teuthology.split_role(role)
+            ctx.daemons.get_daemon(type_, id_, cluster).stop()
+            if type_ == 'osd':
+                ctx.managers[cluster].mark_down_osd(id_)
             ctx.daemons.get_daemon(type_, id_, cluster).restart()
             clusters.add(cluster)
-    
-    for cluster in clusters:
-        manager = ctx.managers[cluster]
-        for dmon in daemons:
-            if '.' in dmon:
-                dm_parts = dmon.split('.')
-                if dm_parts[1].isdigit():
-                    if dm_parts[0] == 'osd':
-                        manager.mark_down_osd(int(dm_parts[1]))
 
     if config.get('wait-for-healthy', True):
         for cluster in clusters:
             healthy(ctx=ctx, config=dict(cluster=cluster))
     if config.get('wait-for-osds-up', False):
         for cluster in clusters:
-            wait_for_osds_up(ctx=ctx, config=dict(cluster=cluster))
+            ctx.managers[cluster].wait_for_all_osds_up()
     yield
 
 
@@ -1638,9 +1562,17 @@ def stop(ctx, config):
         config = {'daemons': config}
 
     daemons = ctx.daemons.resolve_role_list(config.get('daemons', None), CEPH_ROLE_TYPES, True)
+    clusters = set()
+
     for role in daemons:
         cluster, type_, id_ = teuthology.split_role(role)
         ctx.daemons.get_daemon(type_, id_, cluster).stop()
+        clusters.add(cluster)
+
+
+    for cluster in clusters:
+        ctx.ceph[cluster].watchdog.stop()
+        ctx.ceph[cluster].watchdog.join()
 
     yield
 
@@ -1863,8 +1795,6 @@ def task(ctx, config):
             fs=config.get('fs', 'xfs'),
             mkfs_options=config.get('mkfs_options', None),
             mount_options=config.get('mount_options', None),
-            block_journal=config.get('block_journal', None),
-            tmpfs_journal=config.get('tmpfs_journal', None),
             skip_mgr_daemons=config.get('skip_mgr_daemons', False),
             log_whitelist=config.get('log-whitelist', []),
             cpu_profile=set(config.get('cpu_profile', []),),
@@ -1879,6 +1809,7 @@ def task(ctx, config):
         lambda: create_rbd_pool(ctx=ctx, config=config),
         lambda: cephfs_setup(ctx=ctx, config=config),
         lambda: run_daemon(ctx=ctx, config=config, type_='mds'),
+        lambda: watchdog_setup(ctx=ctx, config=config),
     ]
 
     with contextutil.nested(*subtasks):
@@ -1915,10 +1846,8 @@ def task(ctx, config):
                     'sudo',
                     'ceph',
                     '--cluster', config['cluster'],
-                    'tell',
-                    'mon.*',
-                    'injectargs',
-                    '--',
-                    '--no-mon-health-to-clog',
-                ]
+                    'config', 'set', 'global',
+                    'mon_health_to_clog', 'false',
+                ],
+                check_status=False,
             )

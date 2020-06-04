@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-from io import BytesIO
 import json
 import logging
 import datetime
@@ -28,6 +27,7 @@ class CephFSMount(object):
         self.client_id = client_id
         self.client_remote = client_remote
         self.mountpoint_dir_name = 'mnt.{id}'.format(id=self.client_id)
+        self._mountpoint = None
         self.fs = None
 
         self.test_files = ['a', 'b', 'c']
@@ -36,8 +36,16 @@ class CephFSMount(object):
 
     @property
     def mountpoint(self):
-        return os.path.join(
-            self.test_dir, '{dir_name}'.format(dir_name=self.mountpoint_dir_name))
+        if self._mountpoint == None:
+            self._mountpoint= os.path.join(
+                self.test_dir, '{dir_name}'.format(dir_name=self.mountpoint_dir_name))
+        return self._mountpoint
+
+    @mountpoint.setter
+    def mountpoint(self, path):
+        if not isinstance(path, str):
+            raise RuntimeError('path should be of str type.')
+        self._mountpoint = path
 
     def is_mounted(self):
         raise NotImplementedError()
@@ -51,8 +59,13 @@ class CephFSMount(object):
         self.fs.wait_for_daemons()
         log.info('Ready to start {}...'.format(type(self).__name__))
 
-    def mount(self, mount_path=None, mount_fs_name=None):
+    def mount(self, mount_path=None, mount_fs_name=None, mountpoint=None, mount_options=[]):
         raise NotImplementedError()
+
+    def mount_wait(self, mount_path=None, mount_fs_name=None, mountpoint=None, mount_options=[]):
+        self.mount(mount_path=mount_path, mount_fs_name=mount_fs_name, mountpoint=mountpoint,
+                   mount_options=mount_options)
+        self.wait_until_mounted()
 
     def umount(self):
         raise NotImplementedError()
@@ -113,6 +126,28 @@ class CephFSMount(object):
                 return True
         return False
 
+    def create_file(self, filename='testfile', dirname=None, user=None,
+                    check_status=True):
+        assert(self.is_mounted())
+
+        if not os.path.isabs(filename):
+            if dirname:
+                if os.path.isabs(dirname):
+                    path = os.path.join(dirname, filename)
+                else:
+                    path = os.path.join(self.mountpoint, dirname, filename)
+            else:
+                path = os.path.join(self.mountpoint, filename)
+        else:
+            path = filename
+
+        if user:
+            args = ['sudo', '-u', user, '-s', '/bin/bash', '-c', 'touch ' + path]
+        else:
+            args = 'touch ' + path
+
+        return self.client_remote.run(args=args, check_status=check_status)
+
     def create_files(self):
         assert(self.is_mounted())
 
@@ -121,6 +156,11 @@ class CephFSMount(object):
             self.client_remote.run(args=[
                 'sudo', 'touch', os.path.join(self.mountpoint, suffix)
             ])
+
+    def test_create_file(self, filename='testfile', dirname=None, user=None,
+                         check_status=True):
+        return self.create_file(filename=filename, dirname=dirname, user=user,
+                                check_status=False)
 
     def check_files(self):
         assert(self.is_mounted())
@@ -157,14 +197,15 @@ class CephFSMount(object):
         p.wait()
         return six.ensure_str(p.stdout.getvalue().strip())
 
-    def run_shell(self, args, wait=True, check_status=True, omit_sudo=True):
+    def run_shell(self, args, wait=True, stdin=None, check_status=True,
+                  omit_sudo=True):
         if isinstance(args, str):
             args = args.split()
 
         args = ["cd", self.mountpoint, run.Raw('&&'), "sudo"] + args
         return self.client_remote.run(args=args, stdout=StringIO(),
                                       stderr=StringIO(), wait=wait,
-                                      check_status=check_status,
+                                      stdin=stdin, check_status=check_status,
                                       omit_sudo=omit_sudo)
 
     def open_no_data(self, basename):
@@ -526,7 +567,10 @@ class CephFSMount(object):
     def get_osd_epoch(self):
         raise NotImplementedError()
 
-    def stat(self, fs_path, wait=True):
+    def lstat(self, fs_path, follow_symlinks=False, wait=True):
+        return self.stat(fs_path, follow_symlinks=False, wait=True)
+
+    def stat(self, fs_path, follow_symlinks=True, wait=True):
         """
         stat a file, and return the result as a dictionary like this:
         {
@@ -545,6 +589,10 @@ class CephFSMount(object):
         Raises exception on absent file.
         """
         abs_path = os.path.join(self.mountpoint, fs_path)
+        if follow_symlinks:
+            stat_call = "os.stat('" + abs_path + "')"
+        else:
+            stat_call = "os.lstat('" + abs_path + "')"
 
         pyscript = dedent("""
             import os
@@ -553,7 +601,7 @@ class CephFSMount(object):
             import sys
 
             try:
-                s = os.stat("{path}")
+                s = {stat_call}
             except OSError as e:
                 sys.exit(e.errno)
 
@@ -561,7 +609,7 @@ class CephFSMount(object):
             print(json.dumps(
                 dict([(a, getattr(s, a)) for a in attrs]),
                 indent=2))
-            """).format(path=abs_path)
+            """).format(stat_call=stat_call)
         proc = self._run_python(pyscript)
         if wait:
             proc.wait()
