@@ -571,6 +571,9 @@ class CephAnsible(Task):
         boot_disk = re.sub(r"\d", '', remote.sh("%s" % BOOT_DISK).strip())
         log.info("Boot disk found : {}".format(boot_disk))
 
+        # install ceph-osd package to use ceph-volume
+        remote.sh("sudo yum install -y ceph-osd --nogpgcheck")
+
         # get disk details and skip boot disk
         # collect list of hdd, ssd and NVme disks
         headers = ["name", "size", "rota", "type"]
@@ -591,6 +594,11 @@ class CephAnsible(Task):
             # skip boot disk and check disk in use
             if boot_disk in disk or not self.test_disk(remote, disk_name):
                 continue
+
+            # make device ready for usage
+            destroy = "sudo ceph-volume lvm zap --destroy {device}"
+            remote.sh(destroy.format(device=disk_name))
+
             disk_info = dict(zip(headers, re.split(r"\s+", disk)))
             disks['devices'].update({disk_name: disk_info})
 
@@ -605,6 +613,11 @@ class CephAnsible(Task):
                     disks['nvme'].append(disk_name)
                 else:
                     disks['ssd'].append(disk_name)
+
+        # check device usage
+        log.info("After zap destroying device(s)")
+        remote.sh("sudo lvs --verbose")
+        remote.sh("sudo pvs --verbose")
 
         return disks
 
@@ -627,9 +640,10 @@ class CephAnsible(Task):
             roles = self.each_cluster.remotes[remote]
             dev_needed = len([role for role in roles
                               if role.startswith('osd')])
-            disks = get_scratch_devices(remote)
 
+            # get disks
             nvme = self.get_disk_info(remote).get('devices', list())
+            disks = get_scratch_devices(remote)
 
             if len(disks) < dev_needed:
                 raise ConfigError(
