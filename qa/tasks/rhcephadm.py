@@ -11,8 +11,9 @@ import json
 import re
 import uuid
 
-from io import BytesIO
+import six
 import toml
+from io import BytesIO
 from six import StringIO
 from tarfile import ReadError
 from tasks.ceph_manager import CephManager
@@ -95,7 +96,27 @@ def download_cephadm(ctx, config, ref):
         ref = config.get('cephadm_branch', ref)
         git_url = teuth_config.get_ceph_git_url()
         log.info('Downloading cephadm (repo %s ref %s)...' % (git_url, ref))
-        if git_url.startswith('https://github.com/'):
+        if ctx.config.get('redhat'):
+            # Install cephadm
+            ctx.cluster.run(
+                args=[
+                    'sudo',
+                    'yum', 'install',
+                    run.Raw('-y'),
+                    'cephadm'
+                ],
+            )
+            ctx.cluster.run(
+                args=[
+                    'cp',
+                    run.Raw('$(which cephadm)'),
+                    ctx.cephadm,
+                    run.Raw('&&'),
+                    'ls', '-l',
+                    ctx.cephadm,
+                ],
+            )
+        elif git_url.startswith('https://github.com/'):
             # git archive doesn't like https:// URLs, which we use with github.
             rest = git_url.split('https://github.com/', 1)[1]
             rest = re.sub(r'\.git/?$', '', rest).strip() # no .git suffix
@@ -123,6 +144,7 @@ def download_cephadm(ctx, config, ref):
                     ctx.cephadm,
                 ],
             )
+
         # sanity-check the resulting file and set executable bit
         cephadm_file_size = '$(stat -c%s {})'.format(ctx.cephadm)
         ctx.cluster.run(
@@ -299,6 +321,13 @@ def ceph_crash(ctx, config):
 
 @contextlib.contextmanager
 def ceph_bootstrap(ctx, config):
+    """
+    Bootstrap ceph cluster, setup containers' registry mirror before
+    the bootstrap if the registry is provided.
+
+    :param ctx: the argparse.Namespace object
+    :param config: the config dict
+    """
     cluster_name = config['cluster']
     testdir = teuthology.get_testdir(ctx)
     fsid = ctx.ceph[cluster_name].fsid
@@ -314,6 +343,7 @@ def ceph_bootstrap(ctx, config):
     ctx.cluster.run(args=[
         'sudo', 'chmod', '777', '/etc/ceph',
         ]);
+
     add_mirror_to_cluster(ctx, config.get('docker_registry_mirror',
                                           'vossi04.front.sepia.ceph.com:5000'))
 
@@ -469,7 +499,7 @@ def ceph_bootstrap(ctx, config):
             try:
                 ctx.daemons.get_daemon(type_, id_, cluster).stop()
             except Exception:
-                log.exception(f'Failed to stop "{role}"')
+                log.exception('Failed to stop "{role}"'.format(role=role))
                 raise
 
         # clean up /etc/ceph
@@ -852,10 +882,6 @@ def stop(ctx, config):
         ctx.daemons.get_daemon(type_, id_, cluster).stop()
         clusters.add(cluster)
 
-#    for cluster in clusters:
-#        ctx.ceph[cluster].watchdog.stop()
-#        ctx.ceph[cluster].watchdog.join()
-
     yield
 
 
@@ -1100,6 +1126,34 @@ def initialize_config(ctx, config):
 
 @contextlib.contextmanager
 def task(ctx, config):
+    """
+    Deploy ceph cluster using cephadm
+
+    Setup containers' mirrors before the bootstrap, if corresponding
+    config provided in teuthology server config yaml file.
+
+    For example, teuthology.yaml can contain the 'defaults' section:
+
+        defaults:
+          cephadm:
+            containers:
+              registry_mirrors:
+                docker.io: 'registry.mirror.example.com:5000'
+              image: 'quay.io/ceph-ci/ceph'
+
+    Using overrides makes it possible to customize it per run.
+    The equivalent 'overrides' section looks like:
+
+        overrides:
+          cephadm:
+            containers:
+              registry_mirrors:
+                docker.io: 'registry.mirror.example.com:5000'
+              image: 'quay.io/ceph-ci/ceph'
+
+    :param ctx: the argparse.Namespace object
+    :param config: the config dict
+    """
     if config is None:
         config = {}
 
@@ -1107,7 +1161,7 @@ def task(ctx, config):
         "task only supports a dictionary for configuration"
 
     overrides = ctx.config.get('overrides', {})
-    teuthology.deep_merge(config, overrides.get('ceph', {}))
+    teuthology.deep_merge(config, overrides.get('rhcephadm', {}))
     log.info('Config: ' + str(config))
 
     testdir = teuthology.get_testdir(ctx)
@@ -1124,8 +1178,28 @@ def task(ctx, config):
         ctx.ceph[cluster_name].bootstrapped = False
 
     # image
+    teuth_defaults = teuth_config.get('defaults', {})
+    cephadm_defaults = teuth_defaults.get('rhcephadm', {})
+    containers_defaults = cephadm_defaults.get('containers', {})
+    mirrors_defaults = containers_defaults.get('registry_mirrors', {})
+    container_registry_mirror = mirrors_defaults.get('docker.io', None)
+    container_image_name = containers_defaults.get('image', None)
+
+    containers = config.get('containers', {})
+    mirrors = containers.get('registry_mirrors', {})
+    container_image_name = containers.get('image', container_image_name)
+    container_registry_mirror = mirrors.get('docker.io',
+                                            container_registry_mirror)
+
+    if not container_image_name:
+        raise Exception("Configuration error occurred. "
+                        "The 'image' value is undefined for 'cephadm' task. "
+                        "Please provide corresponding options in the task's "
+                        "config, task 'overrides', or teuthology 'defaults' "
+                        "section.")
+
     if not hasattr(ctx.ceph[cluster_name], 'image'):
-        ctx.ceph[cluster_name].image = config.get('image')
+        ctx.ceph[cluster_name].image = container_image_name
     ref = None
     if not ctx.ceph[cluster_name].image:
         sha1 = config.get('sha1')
@@ -1186,7 +1260,7 @@ def task(ctx, config):
 def registries_add_mirror_to_docker_io(conf, mirror, registries):
     config = toml.loads(conf)
     is_v1 = 'registries' in config
-    search, insecure = None, None
+    search, insecure = list(), list()
     if is_v1:
         search = config.get('registries', {}).get('search', {}).get('registries', [])
         insecure = config.get('registries', {}).get('search', {}).get('insecure', [])
@@ -1253,7 +1327,7 @@ def add_mirror_to_cluster(ctx, mirror):
             teuthology.sudo_write_file(
                 remote=remote,
                 path=registries_conf,
-                data=new_config,
+                data=six.ensure_str(new_config),
             )
         except IOError as e:  # py3: use FileNotFoundError instead.
             if e.errno != errno.ENOENT:
