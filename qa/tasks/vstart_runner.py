@@ -30,7 +30,7 @@ Alternative usage:
 
 """
 
-from StringIO import StringIO
+from io import StringIO
 from collections import defaultdict
 import getpass
 import signal
@@ -57,7 +57,7 @@ log = logging.getLogger(__name__)
 
 handler = logging.FileHandler("./vstart_runner.log")
 formatter = logging.Formatter(
-    fmt=u'%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s',
+    fmt='%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S')
 handler.setFormatter(formatter)
 log.addHandler(handler)
@@ -109,7 +109,7 @@ if os.path.exists("./CMakeCache.txt") and os.path.exists("./bin"):
                 python_paths.append(g_exp)
 
     ld_path = os.path.join(os.getcwd(), "lib/")
-    print "Using guessed paths {0} {1}".format(ld_path, python_paths)
+    print("Using guessed paths {0} {1}".format(ld_path, python_paths))
     respawn_in_path(ld_path, python_paths)
 
 
@@ -118,7 +118,7 @@ try:
     from tasks.ceph_manager import CephManager
     from tasks.cephfs.fuse_mount import FuseMount
     from tasks.cephfs.filesystem import Filesystem, MDSCluster, CephCluster
-    from mgr.mgr_test_case import MgrCluster
+    from .mgr.mgr_test_case import MgrCluster
     from teuthology.contextutil import MaxWhileTries
     from teuthology.task import interactive
 except ImportError:
@@ -272,7 +272,7 @@ class LocalRemote(object):
         else:
             # Sanity check that we've got a list of strings
             for arg in args:
-                if not isinstance(arg, basestring):
+                if not isinstance(arg, str):
                     raise RuntimeError("Oops, can't handle arg {0} type {1}".format(
                         arg, arg.__class__
                     ))
@@ -285,7 +285,7 @@ class LocalRemote(object):
                                        env=env)
 
         if stdin:
-            if not isinstance(stdin, basestring):
+            if not isinstance(stdin, str):
                 raise RuntimeError("Can't handle non-string stdins on a vstart cluster")
 
             # Hack: writing to stdin is not deadlock-safe, but it "always" works
@@ -656,9 +656,9 @@ class LocalCephCluster(CephCluster):
 
         existing_str += banner
 
-        for subsys, kvs in self._conf.items():
+        for subsys, kvs in list(self._conf.items()):
             existing_str += "\n[{0}]\n".format(subsys)
-            for key, val in kvs.items():
+            for key, val in list(kvs.items()):
                 # Comment out existing instance if it exists
                 log.info("Searching for existing instance {0}/{1}".format(
                     key, subsys
@@ -694,7 +694,7 @@ class LocalMDSCluster(LocalCephCluster, MDSCluster):
     def __init__(self, ctx):
         super(LocalMDSCluster, self).__init__(ctx)
 
-        self.mds_ids = ctx.daemons.daemons['ceph.mds'].keys()
+        self.mds_ids = list(ctx.daemons.daemons['ceph.mds'].keys())
         self.mds_daemons = dict([(id_, LocalDaemon("mds", id_)) for id_ in self.mds_ids])
 
     def clear_firewall(self):
@@ -709,7 +709,7 @@ class LocalMgrCluster(LocalCephCluster, MgrCluster):
     def __init__(self, ctx):
         super(LocalMgrCluster, self).__init__(ctx)
 
-        self.mgr_ids = ctx.daemons.daemons['ceph.mgr'].keys()
+        self.mgr_ids = list(ctx.daemons.daemons['ceph.mgr'].keys())
         self.mgr_daemons = dict([(id_, LocalDaemon("mgr", id_)) for id_ in self.mgr_ids])
 
 

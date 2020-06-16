@@ -1,7 +1,7 @@
 """
 Qemu task
 """
-from cStringIO import StringIO
+from io import StringIO
 
 import contextlib
 import logging
@@ -15,7 +15,7 @@ from tasks import rbd
 from teuthology.orchestra import run
 from teuthology.config import config as teuth_config
 
-from util.workunit import get_refspec_after_overrides
+from .util.workunit import get_refspec_after_overrides
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ DEFAULT_CPUS = 1
 DEFAULT_MEM = 4096 # in megabytes
 
 def create_images(ctx, config, managers):
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         disks = client_config.get('disks', DEFAULT_NUM_DISKS)
         if not isinstance(disks, list):
             disks = [{} for n in range(int(disks))]
@@ -48,13 +48,13 @@ def create_images(ctx, config, managers):
                 )
 
 def create_clones(ctx, config, managers):
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         clone = client_config.get('clone', False)
         if clone:
             num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
             if isinstance(num_disks, list):
                 num_disks = len(num_disks)
-            for i in xrange(num_disks):
+            for i in range(num_disks):
                 create_config = {
                     client: {
                         'image_name':
@@ -74,9 +74,9 @@ def create_dirs(ctx, config):
     Handle directory creation and cleanup
     """
     testdir = teuthology.get_testdir(ctx)
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         assert 'test' in client_config, 'You must specify a test to run'
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         remote.run(
             args=[
                 'install', '-d', '-m0755', '--',
@@ -87,9 +87,9 @@ def create_dirs(ctx, config):
     try:
         yield
     finally:
-        for client, client_config in config.iteritems():
+        for client, client_config in config.items():
             assert 'test' in client_config, 'You must specify a test to run'
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+            (remote,) = list(ctx.cluster.only(client).remotes.keys())
             remote.run(
                 args=[
                     'rmdir', '{tdir}/qemu'.format(tdir=testdir), run.Raw('||'), 'true',
@@ -109,11 +109,11 @@ def generate_iso(ctx, config):
     git_url = teuth_config.get_ceph_qa_suite_git_url()
     log.info('Pulling tests from %s ref %s', git_url, refspec)
 
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         assert 'test' in client_config, 'You must specify a test to run'
         test = client_config['test']
 
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
 
         clone_dir = '{tdir}/qemu_clone.{role}'.format(tdir=testdir, role=client)
         remote.run(args=refspec.clone(git_url, clone_dir))
@@ -138,7 +138,7 @@ def generate_iso(ctx, config):
             num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
             if isinstance(num_disks, list):
                 num_disks = len(num_disks)
-            for i in xrange(1, num_disks):
+            for i in range(1, num_disks):
                 dev_letter = chr(ord('a') + i)
                 user_data += """
 - |
@@ -203,8 +203,8 @@ def generate_iso(ctx, config):
     try:
         yield
     finally:
-        for client in config.iterkeys():
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+        for client in config.keys():
+            (remote,) = list(ctx.cluster.only(client).remotes.keys())
             remote.run(
                 args=[
                     'rm', '-rf',
@@ -221,8 +221,8 @@ def download_image(ctx, config):
     """Downland base image, remove image file when done"""
     log.info('downloading base image')
     testdir = teuthology.get_testdir(ctx)
-    for client, client_config in config.iteritems():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+    for client, client_config in config.items():
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         base_file = '{tdir}/qemu/base.{client}.qcow2'.format(tdir=testdir, client=client)
         image_url = client_config.get('image_url', DEFAULT_IMAGE_URL)
         remote.run(
@@ -253,12 +253,12 @@ def download_image(ctx, config):
         yield
     finally:
         log.debug('cleaning up base image files')
-        for client in config.iterkeys():
+        for client in config.keys():
             base_file = '{tdir}/qemu/base.{client}.qcow2'.format(
                 tdir=testdir,
                 client=client,
                 )
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+            (remote,) = list(ctx.cluster.only(client).remotes.keys())
             remote.run(
                 args=[
                     'rm', '-f', base_file,
@@ -344,8 +344,8 @@ def run_qemu(ctx, config):
     """Setup kvm environment and start qemu"""
     procs = []
     testdir = teuthology.get_testdir(ctx)
-    for client, client_config in config.iteritems():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+    for client, client_config in config.items():
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         log_dir = '{tdir}/archive/qemu/{client}'.format(tdir=testdir, client=client)
         remote.run(
             args=[
@@ -395,7 +395,7 @@ def run_qemu(ctx, config):
         num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
         if isinstance(num_disks, list):
             num_disks = len(num_disks)
-        for i in xrange(num_disks):
+        for i in range(num_disks):
             suffix = '-clone' if clone else ''
             args.extend([
                 '-drive',
@@ -430,8 +430,8 @@ def run_qemu(ctx, config):
             time.sleep(time_wait)
 
         log.debug('checking that qemu tests succeeded...')
-        for client in config.iterkeys():
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+        for client in config.keys():
+            (remote,) = list(ctx.cluster.only(client).remotes.keys())
 
             # ensure we have permissions to all the logs
             log_dir = '{tdir}/archive/qemu/{client}'.format(tdir=testdir,

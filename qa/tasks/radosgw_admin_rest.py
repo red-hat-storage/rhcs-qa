@@ -7,7 +7,7 @@ To extract the inventory (in csv format) use the command:
    grep '^ *# TESTCASE' | sed 's/^ *# TESTCASE //'
 
 """
-from cStringIO import StringIO
+from io import StringIO
 import logging
 import json
 
@@ -20,7 +20,7 @@ import time
 
 from boto.connection import AWSAuthConnection
 from teuthology import misc as teuthology
-from util.rgw import get_user_summary, get_user_successful_ops, rgwadmin
+from .util.rgw import get_user_summary, get_user_successful_ops, rgwadmin
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = config.keys()
+    clients = list(config.keys())
 
     # just use the first client...
     client = clients[0]

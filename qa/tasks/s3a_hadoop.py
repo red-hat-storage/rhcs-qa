@@ -35,7 +35,7 @@ def task(ctx, config):
     testdir = misc.get_testdir(ctx)
 
     role = config.get('role')
-    (remote,) = ctx.cluster.only(role).remotes.keys()
+    (remote,) = list(ctx.cluster.only(role).remotes.keys())
     endpoint = ctx.rgw.role_endpoints.get(role)
     assert endpoint, 's3tests: no rgw endpoint for {}'.format(role)
 

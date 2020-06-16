@@ -2,7 +2,7 @@
 System  Tests
 """
 import logging
-from cStringIO import StringIO
+from io import StringIO
 from time import sleep
 
 from teuthology.orchestra import run
@@ -117,7 +117,7 @@ def get_daemon_info(daemon, ctx):
         daemons = ctx.daemons.daemons[daemon]
         daemon_stat['daemons'] = daemons
         daemon_stat['count'] = len(daemons)
-        for name, dstate in daemons.items():
+        for name, dstate in list(daemons.items()):
             if dstate.running():
                 daemon_stat["active"].update({name: dstate})
             else:
@@ -142,7 +142,7 @@ def check_ceph_cli_availability(ctx):
     """
     __warn_status = "Make sure required number(2) of MON(S) are running"
     mons = ctx.daemons.daemons['ceph.mon']
-    res = [daemon.running() for node, daemon in mons.items() if daemon.running()]
+    res = [daemon.running() for node, daemon in list(mons.items()) if daemon.running()]
     if len(res) >= 2:
         log.info(" CEPH CLI is available")
         return True
@@ -201,7 +201,7 @@ def check_service_status(ctx, dstate, **args):
 
         # Check cluster health
         # Check ceph cli availability, skip if ceph cli not available
-        cluster = ctx.managers.keys()[0]
+        cluster = list(ctx.managers.keys())[0]
         check_status = args.get('check_status', False)
         check_key = args.get('check_keys')
         health_state = args.get('state')
@@ -265,7 +265,7 @@ def wait_for_daemon_healthy(dstate, ctx, timeout=1200):
     _type = dstate.type_
     daemon_count = len(ctx.daemons.iter_daemons_of_role(_MON))
     mark = __mark(dstate)
-    cluster = ctx.managers.keys()[0]
+    cluster = list(ctx.managers.keys())[0]
 
     try:
         ctx.managers[cluster].wait_for_mgr_available(timeout=timeout)
@@ -342,7 +342,7 @@ def ceph_daemon_system_test(ctx, daemon):
     try:
         # Get daemon nodes with SystemDState obj from ctx
         daemons = ctx.daemons.daemons.get(daemon)
-        for name, dstate in daemons.items():
+        for name, dstate in list(daemons.items()):
             mark = __mark(dstate)
 
             # Stop and verify the cluster status
@@ -382,9 +382,9 @@ def ceph_daemon_system_test(ctx, daemon):
         # Reboot daemon node and verify cluster status
         nodes = dict()
         nodes = dict((j.remote.hostname, j)
-                     for i, j in ctx.daemons.daemons[daemon].items()
+                     for i, j in list(ctx.daemons.daemons[daemon].items())
                      if j.remote.hostname not in nodes)
-        for node, dstate in nodes.items():
+        for node, dstate in list(nodes.items()):
             assert reboot_node(dstate, timeout=1200, interval=30)
             __wait(60, msg="wait for node to be in expected state")
             wait_for_daemon_healthy(dstate, ctx, timeout=3600)

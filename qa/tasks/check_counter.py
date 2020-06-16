@@ -4,7 +4,7 @@ import json
 
 from teuthology.task import Task
 from teuthology import misc
-import ceph_manager
+from . import ceph_manager
 
 log = logging.getLogger(__name__)
 
@@ -46,9 +46,9 @@ class CheckCounter(Task):
         targets = self.config.get('counters', {})
 
         if cluster_name is None:
-            cluster_name = self.ctx.managers.keys()[0]
+            cluster_name = list(self.ctx.managers.keys())[0]
 
-        for daemon_type, counters in targets.items():
+        for daemon_type, counters in list(targets.items()):
             # List of 'a', 'b', 'c'...
             daemon_ids = list(misc.all_roles_of_type(self.ctx.cluster, daemon_type))
             daemons = dict([(daemon_id,
@@ -57,7 +57,7 @@ class CheckCounter(Task):
 
             seen = set()
 
-            for daemon_id, daemon in daemons.items():
+            for daemon_id, daemon in list(daemons.items()):
                 if not daemon.running():
                     log.info("Ignoring daemon {0}, it isn't running".format(daemon_id))
                     continue

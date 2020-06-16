@@ -15,12 +15,12 @@ import json
 import logging
 import time
 import datetime
-import Queue
+import queue
 import bunch
 
 import sys
 
-from cStringIO import StringIO
+from io import StringIO
 
 import boto.exception
 import boto.s3.connection
@@ -29,9 +29,9 @@ from boto.utils import RequestHook
 
 import httplib2
 
-import util.rgw as rgw_utils
+from . import util.rgw as rgw_utils
 
-from util.rgw import rgwadmin, get_user_summary, get_user_successful_ops
+from .util.rgw import rgwadmin, get_user_summary, get_user_successful_ops
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class usage_acc:
     def update(self, c, cat, user, out, b_in, err):
         x = self.c2x(c, cat)
         usage_acc_update2(x, out, b_in, err)
-        if not err and cat == 'create_bucket' and not x.has_key('owner'):
+        if not err and cat == 'create_bucket' and 'owner' not in x:
             x['owner'] = user
     def make_entry(self, cat, bucket, user, out, b_in, err):
         if cat == 'create_bucket' and err:
@@ -119,7 +119,7 @@ class usage_acc:
     def get_usage(self):
         return self.results
     def compare_results(self, results):
-        if not results.has_key('entries') or not results.has_key('summary'):
+        if 'entries' not in results or 'summary' not in results:
             return ['Missing entries or summary']
         r = []
         for e in self.results['entries']:
@@ -135,7 +135,7 @@ class usage_acc:
             for b in e['buckets']:
                 c = b['categories']
                 if b['bucket'] == 'nosuchbucket':
-                    print "got here"
+                    print("got here")
                 try:
                     b2 = self.e2b(e2, b['bucket'], False)
                     if b2 != None:
@@ -199,7 +199,7 @@ def ignore_this_entry(cat, bucket, user, out, b_in, err):
     pass
 class requestlog_queue():
     def __init__(self, add):
-        self.q = Queue.Queue(1000)
+        self.q = queue.Queue(1000)
         self.adder = add
     def handle_request_data(self, request, response, error=False):
         now = datetime.datetime.now()
@@ -236,7 +236,7 @@ def create_presigned_url(conn, method, bucket_name, key_name, expiration):
 
 def send_raw_http_request(conn, method, bucket_name, key_name, follow_redirects = False):
     url = create_presigned_url(conn, method, bucket_name, key_name, 3600)
-    print url
+    print(url)
     h = httplib2.Http()
     h.follow_redirects = follow_redirects
     return h.request(url, method)
@@ -272,7 +272,7 @@ def task(ctx, config):
     config = ctx.rgw.config
     log.debug('config is: %r', config)
 
-    clients_from_config = config.keys()
+    clients_from_config = list(config.keys())
 
     # choose first client as default
     client = clients_from_config[0]

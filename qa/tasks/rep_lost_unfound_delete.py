@@ -3,10 +3,10 @@ Lost_unfound
 """
 import logging
 from teuthology.orchestra import run
-import ceph_manager
+from . import ceph_manager
 import time
 from teuthology import misc as teuthology
-from util.rados import rados
+from .util.rados import rados
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         'lost_unfound task only accepts a dict for configuration'
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
 
     manager = ceph_manager.CephManager(
         mon,

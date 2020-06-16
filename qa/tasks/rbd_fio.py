@@ -9,7 +9,7 @@ import contextlib
 import json
 import logging
 import os
-import StringIO
+import io
 
 from teuthology.parallel import parallel
 from teuthology import misc as teuthology
@@ -52,7 +52,7 @@ or
         client_config = config['all']
     clients = ctx.cluster.only(teuthology.is_type('client'))
     rbd_test_dir = teuthology.get_testdir(ctx) + "/rbd_fio_test"
-    for remote,role in clients.remotes.iteritems():
+    for remote,role in clients.remotes.items():
         if 'client_config' in locals():
            with parallel() as p:
                p.spawn(run_fio, remote, client_config, rbd_test_dir)
@@ -77,7 +77,7 @@ def get_ioengine_package_name(ioengine, remote):
 
 def run_rbd_map(remote, image, iodepth):
     iodepth = max(iodepth, 128)  # RBD_QUEUE_DEPTH_DEFAULT
-    out = StringIO.StringIO()
+    out = io.StringIO()
     remote.run(args=['sudo', 'rbd', 'device', 'map', '-o',
                      'queue_depth={}'.format(iodepth), image], stdout=out)
     dev = out.getvalue().rstrip('\n')
@@ -159,7 +159,7 @@ def run_fio(remote, config, rbd_test_dir):
                         '--size', '{size}'.format(size=image_size),
                         '--image', rbd_name,
                         '--image-format', '{f}'.format(f=frmt)]
-           map(lambda x: create_args.extend(['--image-feature', x]), feature)
+           list(map(lambda x: create_args.extend(['--image-feature', x]), feature))
            remote.run(args=create_args)
            remote.run(args=['rbd', 'info', rbd_name])
            if ioengine != 'rbd':
@@ -214,7 +214,7 @@ def run_fio(remote, config, rbd_test_dir):
         remote.run(args=['sudo', run.Raw('{tdir}/fio-fio-{v}/fio {f}'.format(tdir=rbd_test_dir,v=fio_version,f=fio_config.name))])
         remote.run(args=['ceph', '-s'])
     finally:
-        out=StringIO.StringIO()
+        out=io.StringIO()
         remote.run(args=['rbd', 'device', 'list', '--format=json'], stdout=out)
         mapped_images = json.loads(out.getvalue())
         if mapped_images:

@@ -1,5 +1,5 @@
 
-from StringIO import StringIO
+from io import StringIO
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.workunit import task as workunit
 

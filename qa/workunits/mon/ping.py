@@ -6,11 +6,11 @@ import subprocess
 import sys
 
 if sys.version_info[0] == 2:
-    string = basestring
-    unicode = unicode
+    string = str
+    str = str
 elif sys.version_info[0] == 3:
     string = str
-    unicode = str
+    str = str
 
 
 class UnexpectedReturn(Exception):
@@ -18,7 +18,7 @@ class UnexpectedReturn(Exception):
         if isinstance(cmd, list):
             self.cmd = ' '.join(cmd)
         else:
-            assert isinstance(cmd, string) or isinstance(cmd, unicode), \
+            assert isinstance(cmd, string) or isinstance(cmd, str), \
                 'cmd needs to be either a list or a str'
             self.cmd = cmd
         self.cmd = str(self.cmd)
@@ -34,12 +34,12 @@ class UnexpectedReturn(Exception):
 def call(cmd):
     if isinstance(cmd, list):
         args = cmd
-    elif isinstance(cmd, string) or isinstance(cmd, unicode):
+    elif isinstance(cmd, string) or isinstance(cmd, str):
         args = shlex.split(cmd)
     else:
         assert False, 'cmd is not a string/unicode nor a list!'
 
-    print('call: {0}'.format(args))
+    print(('call: {0}'.format(args)))
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     procout, procerr = proc.communicate(None)
 
@@ -75,7 +75,7 @@ def main():
 
     print('ping all monitors')
     for m in mon_names:
-        print('ping mon.{0}'.format(m))
+        print(('ping mon.{0}'.format(m)))
         out = expect('ceph ping mon.{0}'.format(m), 0)
         reply = json.loads(out)
 
@@ -85,7 +85,7 @@ def main():
 
     print('test out-of-quorum reply')
     for m in mon_names:
-        print('testing mon.{0}'.format(m))
+        print(('testing mon.{0}'.format(m)))
         expect('ceph daemon mon.{0} quorum exit'.format(m), 0)
 
         quorum_status = get_quorum_status()

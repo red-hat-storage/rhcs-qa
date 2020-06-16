@@ -1,7 +1,7 @@
 """
 Run rgw s3 readwite tests
 """
-from cStringIO import StringIO
+from io import StringIO
 import base64
 import contextlib
 import logging
@@ -31,7 +31,7 @@ def download(ctx, config):
     assert isinstance(config, dict)
     log.info('Downloading s3-tests...')
     testdir = teuthology.get_testdir(ctx)
-    for (client, cconf) in config.items():
+    for (client, cconf) in list(config.items()):
         branch = cconf.get('force-branch', None)
         if not branch:
             branch = cconf.get('branch', 'master')
@@ -75,7 +75,7 @@ def _config_user(s3tests_conf, section, user):
     s3tests_conf[section].setdefault('user_id', user)
     s3tests_conf[section].setdefault('email', '{user}+test@test.test'.format(user=user))
     s3tests_conf[section].setdefault('display_name', 'Mr. {user}'.format(user=user))
-    s3tests_conf[section].setdefault('access_key', ''.join(random.choice(string.uppercase) for i in xrange(20)))
+    s3tests_conf[section].setdefault('access_key', ''.join(random.choice(string.uppercase) for i in range(20)))
     s3tests_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)))
 
 @contextlib.contextmanager
@@ -101,7 +101,7 @@ def create_users(ctx, config):
         rwconf['files'].setdefault('num', 10)
         rwconf['files'].setdefault('size', 2000)
         rwconf['files'].setdefault('stddev', 500)
-        for section, user in users.iteritems():
+        for section, user in users.items():
             _config_user(s3tests_conf, section, '{user}.{client}'.format(user=user, client=client))
             log.debug('creating user {user} on {client}'.format(user=s3tests_conf[section]['user_id'],
                                                                 client=client))
@@ -137,7 +137,7 @@ def create_users(ctx, config):
         yield
     finally:
         for client in config['clients']:
-            for section, user in users.iteritems():
+            for section, user in users.items():
                 #uid = '{user}.{client}'.format(user=user, client=client)
                 real_uid, delete_this_user  = cached_client_user_names[client][section+user]
                 if delete_this_user:
@@ -164,11 +164,11 @@ def configure(ctx, config):
     """
     assert isinstance(config, dict)
     log.info('Configuring s3-readwrite-tests...')
-    for client, properties in config['clients'].iteritems():
+    for client, properties in config['clients'].items():
         s3tests_conf = config['s3tests_conf'][client]
         if properties is not None and 'rgw_server' in properties:
             host = None
-            for target, roles in zip(ctx.config['targets'].iterkeys(), ctx.config['roles']):
+            for target, roles in zip(iter(ctx.config['targets'].keys()), ctx.config['roles']):
                 log.info('roles: ' + str(roles))
                 log.info('target: ' + str(target))
                 if properties['rgw_server'] in roles:
@@ -182,7 +182,7 @@ def configure(ctx, config):
         s3tests_conf['s3'].setdefault('port', def_conf['port'])
         s3tests_conf['s3'].setdefault('is_secure', def_conf['is_secure'])
 
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         remote.run(
             args=[
                 'cd',
@@ -215,8 +215,8 @@ def run_tests(ctx, config):
     """
     assert isinstance(config, dict)
     testdir = teuthology.get_testdir(ctx)
-    for client, client_config in config.iteritems():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+    for client, client_config in config.items():
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         conf = teuthology.get_file(remote, '{tdir}/archive/s3readwrite.{client}.config.yaml'.format(tdir=testdir, client=client))
         args = [
                 '{tdir}/s3-tests/virtualenv/bin/s3tests-test-readwrite'.format(tdir=testdir),
@@ -303,11 +303,11 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = config.keys()
+    clients = list(config.keys())
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.
-    for client in config.iterkeys():
+    for client in config.keys():
         if not config[client]:
             config[client] = {}
         teuthology.deep_merge(config[client], overrides.get('s3readwrite', {}))

@@ -30,7 +30,7 @@ def init():
     #cluster = rados.Rados(conffile='./ceph.conf')
     cluster = rados.Rados(conffile='/etc/ceph/ceph.conf')
     cluster.connect()
-    print("\nCluster ID: " + cluster.get_fsid())
+    print(("\nCluster ID: " + cluster.get_fsid()))
     cluster.create_pool('large-omap-test-pool')
     ioctx = cluster.open_ioctx('large-omap-test-pool')
     ioctx.write_full('large-omap-test-object1', "Lorem ipsum")
@@ -59,7 +59,7 @@ def init():
 
     keys = []
     values = []
-    for x in xrange(20000):
+    for x in range(20000):
         keys.append(str(x))
         values.append(buffer)
 

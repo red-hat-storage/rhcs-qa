@@ -1,5 +1,5 @@
 """Scrub testing"""
-from cStringIO import StringIO
+from io import StringIO
 
 import contextlib
 import json
@@ -8,7 +8,7 @@ import os
 import time
 import tempfile
 
-import ceph_manager
+from . import ceph_manager
 from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def wait_for_victim_pg(manager):
 
 def find_victim_object(ctx, pg, osd):
     """Return a file to be fuzzed"""
-    (osd_remote,) = ctx.cluster.only('osd.%d' % osd).remotes.iterkeys()
+    (osd_remote,) = iter(ctx.cluster.only('osd.%d' % osd).remotes.keys())
     data_path = os.path.join(
         '/var/lib/ceph/osd',
         'ceph-{id}'.format(id=osd),
@@ -359,7 +359,7 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         'scrub_test task only accepts a dict for configuration'
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
 
     num_osds = teuthology.num_instances_of_type(ctx.cluster, 'osd')
     log.info('num_osds is %s' % num_osds)
@@ -376,7 +376,7 @@ def task(ctx, config):
     for i in range(num_osds):
         manager.raw_cluster_cmd('tell', 'osd.%d' % i, 'injectargs',
                                 '--', '--osd-objectstore-fuse')
-    manager.flush_pg_stats(range(num_osds))
+    manager.flush_pg_stats(list(range(num_osds)))
     manager.wait_for_clean()
 
     # write some data

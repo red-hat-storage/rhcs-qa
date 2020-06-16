@@ -14,7 +14,7 @@ except:
     pass
 
 if len(sys.argv) < 3:
-    print("Usage: %s <url> <admin_key>" % sys.argv[0])
+    print(("Usage: %s <url> <admin_key>" % sys.argv[0]))
     sys.exit(1)
 
 addr = sys.argv[1]
@@ -30,7 +30,7 @@ request = requests.post(
     headers=headers,
     verify=False,
     auth=auth)
-print(request.text)
+print((request.text))
 request = requests.get(addr + '/pool', verify=False, auth=auth)
 assert(request.json()[-1]['pool_name'] == 'supertestfriends')
 pool_id = request.json()[-1]['pool']
@@ -38,12 +38,12 @@ pool_id = request.json()[-1]['pool']
 # get a mon name
 request = requests.get(addr + '/mon', verify=False, auth=auth)
 firstmon = request.json()[0]['name']
-print('first mon is %s' % firstmon)
+print(('first mon is %s' % firstmon))
 
 # get a server name
 request = requests.get(addr + '/osd', verify=False, auth=auth)
 aserver = request.json()[0]['server']
-print('a server is %s' % aserver)
+print(('a server is %s' % aserver))
 
 
 screenplay = [
@@ -82,16 +82,16 @@ for method, endpoint, args in screenplay:
         time.sleep(endpoint)
         continue
     url = addr + endpoint
-    print("URL = " + url)
+    print(("URL = " + url))
     request = getattr(requests, method)(
         url,
         data=json.dumps(args),
         headers=headers,
         verify=False,
         auth=auth)
-    print(request.text)
+    print((request.text))
     if request.status_code != 200 or 'error' in request.json():
-        print('ERROR: %s request for URL "%s" failed' % (method, url))
+        print(('ERROR: %s request for URL "%s" failed' % (method, url)))
         sys.exit(1)
 
 print('OK')

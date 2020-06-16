@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
+
 
 import time
 
@@ -21,7 +21,7 @@ class AuthTest(DashboardTestCase):
         self.assertIn('username', payload)
         self.assertEqual(payload['username'], username)
 
-        for scope, perms in permissions.items():
+        for scope, perms in list(permissions.items()):
             self.assertIsNotNone(scope)
             self.assertIn('read', perms)
             self.assertIn('update', perms)
