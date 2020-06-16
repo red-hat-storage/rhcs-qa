@@ -21,7 +21,7 @@ def start_tgt_remotes(ctx, start_tgtd):
     """
     remotes = ctx.cluster.only(teuthology.is_type('client')).remotes
     tgtd_list = []
-    for rem, roles in remotes.iteritems():
+    for rem, roles in remotes.items():
         for _id in roles:
             if _id in start_tgtd:
                 if not rem in tgtd_list:
@@ -160,7 +160,7 @@ def task(ctx, config):
     The iscsi administration is handled by the iscsi task.
     """
     if config:
-        config = {key : val for key, val in config.items()
+        config = {key : val for key, val in list(config.items())
                 if key.startswith('client')}
     # config at this point should only contain keys starting with 'client'
     start_tgtd = []

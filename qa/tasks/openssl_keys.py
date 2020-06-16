@@ -65,7 +65,7 @@ class OpenSSLKeys(Task):
         # use testdir/ca as a working directory
         self.cadir = '/'.join((misc.get_testdir(self.ctx), 'ca'))
 
-        for name, config in self.config.items():
+        for name, config in list(self.config.items()):
             # names must be unique to avoid clobbering each others files
             if name in self.ctx.ssl_certificates:
                 raise ConfigError('ssl: duplicate certificate name {}'.format(name))
@@ -103,7 +103,7 @@ class OpenSSLKeys(Task):
         if not cert.client:
             raise ConfigError('ssl: missing required field "client"')
 
-        (cert.remote,) = self.ctx.cluster.only(cert.client).remotes.keys()
+        (cert.remote,) = list(self.ctx.cluster.only(cert.client).remotes.keys())
 
         cert.remote.run(args=['mkdir', '-p', self.cadir])
 
@@ -177,7 +177,7 @@ class OpenSSLKeys(Task):
         """
         Install as a trusted ca certificate on the given client.
         """
-        (remote,) = self.ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(self.ctx.cluster.only(client).remotes.keys())
 
         installed = argparse.Namespace()
         installed.remote = remote

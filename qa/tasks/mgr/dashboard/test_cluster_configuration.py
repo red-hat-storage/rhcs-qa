@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+
 
 import time
 
@@ -225,7 +225,7 @@ class ClusterConfigurationTest(DashboardTestCase):
         self._put('/api/cluster_conf', {'options': expected_result})
         self.assertStatus(200)
 
-        for config_name, value in expected_result.items():
+        for config_name, value in list(expected_result.items()):
             result = self._wait_for_expected_get_result(self._get_config_by_name, config_name,
                                                         [value])
             self.assertEqual(result, [value])
@@ -250,10 +250,10 @@ class ClusterConfigurationTest(DashboardTestCase):
         self.assertError(code='config_option_not_updatable_at_runtime',
                          component='cluster_configuration',
                          detail='Config option {} is/are not updatable at runtime'.format(
-                             ', '.join(config_options.keys())))
+                             ', '.join(list(config_options.keys()))))
 
         # check if config option values are still the original ones
-        for config_name, value in orig_values.items():
+        for config_name, value in list(orig_values.items()):
             result = self._wait_for_expected_get_result(self._get_config_by_name, config_name,
                                                         value)
             self.assertEqual(result, value)
@@ -277,7 +277,7 @@ class ClusterConfigurationTest(DashboardTestCase):
                              'public_bind_addr'))
 
         # check if config option values are still the original ones
-        for config_name, value in orig_values.items():
+        for config_name, value in list(orig_values.items()):
             result = self._wait_for_expected_get_result(self._get_config_by_name, config_name,
                                                         value)
             self.assertEqual(result, value)

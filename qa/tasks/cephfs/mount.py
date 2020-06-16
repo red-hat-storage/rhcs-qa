@@ -5,7 +5,7 @@ import datetime
 import time
 from textwrap import dedent
 import os
-from StringIO import StringIO
+from io import StringIO
 from teuthology.orchestra import run
 from teuthology.orchestra.run import CommandFailedError, ConnectionLostError
 from tasks.cephfs.filesystem import Filesystem

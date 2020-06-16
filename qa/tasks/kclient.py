@@ -8,7 +8,7 @@ from teuthology.misc import deep_merge
 from teuthology.orchestra.run import CommandFailedError
 from teuthology import misc
 from teuthology.contextutil import MaxWhileTries
-from cephfs.kernel_mount import KernelMount
+from .cephfs.kernel_mount import KernelMount
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def task(ctx, config):
         client_roles = config
         config = dict([r, dict()] for r in client_roles)
     elif isinstance(config, dict):
-        client_roles = filter(lambda x: 'client.' in x, config.keys())
+        client_roles = [x for x in list(config.keys()) if 'client.' in x]
     else:
         raise ValueError("Invalid config object: {0} ({1})".format(config, config.__class__))
 
@@ -73,11 +73,11 @@ def task(ctx, config):
     test_dir = misc.get_testdir(ctx)
 
     # Assemble mon addresses
-    remotes_and_roles = ctx.cluster.remotes.items()
+    remotes_and_roles = list(ctx.cluster.remotes.items())
     roles = [roles for (remote_, roles) in remotes_and_roles]
     ips = [remote_.ssh.get_transport().getpeername()[0]
            for (remote_, _) in remotes_and_roles]
-    mons = misc.get_mons(roles, ips).values()
+    mons = list(misc.get_mons(roles, ips).values())
 
     mounts = {}
     for id_, remote in clients:
@@ -112,7 +112,7 @@ def task(ctx, config):
         log.info('Unmounting kernel clients...')
 
         forced = False
-        for mount in mounts.values():
+        for mount in list(mounts.values()):
             if mount.is_mounted():
                 try:
                     mount.umount()

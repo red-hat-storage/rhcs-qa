@@ -28,7 +28,7 @@ def task(ctx, config):
         config = dict.fromkeys(config)
 
     log.info('Deploying tox from pip...')
-    for (client, _) in config.items():
+    for (client, _) in list(config.items()):
         # yup, we have to deploy tox first. The packaged one, available
 	# on Sepia's Ubuntu machines, is outdated for Keystone/Tempest.
         tvdir = get_toxvenv_dir(ctx)
@@ -46,6 +46,6 @@ def task(ctx, config):
     try:
         yield
     finally:
-        for (client, _) in config.items():
+        for (client, _) in list(config.items()):
             ctx.cluster.only(client).run(
                 args=[ 'rm', '-rf', get_toxvenv_dir(ctx) ])

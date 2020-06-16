@@ -1,10 +1,10 @@
 """
 ceph_objectstore_tool - Simple test of ceph-objectstore-tool utility
 """
-from cStringIO import StringIO
+from io import StringIO
 import contextlib
 import logging
-import ceph_manager
+from . import ceph_manager
 from teuthology import misc as teuthology
 import time
 import os
@@ -13,7 +13,7 @@ from teuthology.orchestra import run
 import sys
 import tempfile
 import json
-from util.rados import (rados, create_replicated_pool, create_ec_pool)
+from .util.rados import (rados, create_replicated_pool, create_ec_pool)
 # from util.rados import (rados, create_ec_pool,
 #                               create_replicated_pool,
 #                               create_cache_pool)
@@ -28,12 +28,12 @@ JPATH = "/var/lib/ceph/osd/ceph-{id}/journal"
 
 def cod_setup_local_data(log, ctx, NUM_OBJECTS, DATADIR,
                          BASE_NAME, DATALINECOUNT):
-    objects = range(1, NUM_OBJECTS + 1)
+    objects = list(range(1, NUM_OBJECTS + 1))
     for i in objects:
         NAME = BASE_NAME + "{num}".format(num=i)
         LOCALNAME = os.path.join(DATADIR, NAME)
 
-        dataline = range(DATALINECOUNT)
+        dataline = list(range(DATALINECOUNT))
         fd = open(LOCALNAME, "w")
         data = "This is the data for " + NAME + "\n"
         for _ in dataline:
@@ -44,14 +44,14 @@ def cod_setup_local_data(log, ctx, NUM_OBJECTS, DATADIR,
 def cod_setup_remote_data(log, ctx, remote, NUM_OBJECTS, DATADIR,
                           BASE_NAME, DATALINECOUNT):
 
-    objects = range(1, NUM_OBJECTS + 1)
+    objects = list(range(1, NUM_OBJECTS + 1))
     for i in objects:
         NAME = BASE_NAME + "{num}".format(num=i)
         DDNAME = os.path.join(DATADIR, NAME)
 
         remote.run(args=['rm', '-f', DDNAME])
 
-        dataline = range(DATALINECOUNT)
+        dataline = list(range(DATALINECOUNT))
         data = "This is the data for " + NAME + "\n"
         DATA = ""
         for _ in dataline:
@@ -64,7 +64,7 @@ def cod_setup(log, ctx, remote, NUM_OBJECTS, DATADIR,
     ERRORS = 0
     log.info("Creating {objs} objects in pool".format(objs=NUM_OBJECTS))
 
-    objects = range(1, NUM_OBJECTS + 1)
+    objects = list(range(1, NUM_OBJECTS + 1))
     for i in objects:
         NAME = BASE_NAME + "{num}".format(num=i)
         DDNAME = os.path.join(DATADIR, NAME)
@@ -80,7 +80,7 @@ def cod_setup(log, ctx, remote, NUM_OBJECTS, DATADIR,
 
         db[NAME] = {}
 
-        keys = range(i)
+        keys = list(range(i))
         db[NAME]["xattr"] = {}
         for k in keys:
             if k == 0:
@@ -237,7 +237,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                          REP_NAME, DATALINECOUNT)
     allremote = []
     allremote.append(cli_remote)
-    allremote += osds.remotes.keys()
+    allremote += list(osds.remotes.keys())
     allremote = list(set(allremote))
     for remote in allremote:
         cod_setup_remote_data(log, ctx, remote, NUM_OBJECTS, DATADIR,
@@ -279,7 +279,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
     prefix = ("sudo ceph-objectstore-tool "
               "--data-path {fpath} "
               "--journal-path {jpath} ").format(fpath=FSPATH, jpath=JPATH)
-    for remote in osds.remotes.iterkeys():
+    for remote in osds.remotes.keys():
         log.debug(remote)
         log.debug(osds.remotes[remote])
         for role in osds.remotes[remote]:
@@ -314,12 +314,12 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
     if pool_dump["type"] == ceph_manager.CephManager.REPLICATED_POOL:
         # Test get-bytes
         log.info("Test get-bytes and set-bytes")
-        for basename in db.keys():
+        for basename in list(db.keys()):
             file = os.path.join(DATADIR, basename)
             GETNAME = os.path.join(DATADIR, "get")
             SETNAME = os.path.join(DATADIR, "set")
 
-            for remote in osds.remotes.iterkeys():
+            for remote in osds.remotes.keys():
                 for role in osds.remotes[remote]:
                     if string.find(role, "osd.") != 0:
                         continue
@@ -327,7 +327,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                     if osdid not in pgs:
                         continue
 
-                    for pg, JSON in db[basename]["pg2json"].iteritems():
+                    for pg, JSON in db[basename]["pg2json"].items():
                         if pg in pgs[osdid]:
                             cmd = ((prefix + "--pgid {pg}").
                                    format(id=osdid, pg=pg).split())
@@ -406,12 +406,12 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                                 ERRORS += 1
 
     log.info("Test list-attrs get-attr")
-    for basename in db.keys():
+    for basename in list(db.keys()):
         file = os.path.join(DATADIR, basename)
         GETNAME = os.path.join(DATADIR, "get")
         SETNAME = os.path.join(DATADIR, "set")
 
-        for remote in osds.remotes.iterkeys():
+        for remote in osds.remotes.keys():
             for role in osds.remotes[remote]:
                 if string.find(role, "osd.") != 0:
                     continue
@@ -419,7 +419,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                 if osdid not in pgs:
                     continue
 
-                for pg, JSON in db[basename]["pg2json"].iteritems():
+                for pg, JSON in db[basename]["pg2json"].items():
                     if pg in pgs[osdid]:
                         cmd = ((prefix + "--pgid {pg}").
                                format(id=osdid, pg=pg).split())
@@ -498,7 +498,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                             log.error(values)
 
     log.info("Test pg info")
-    for remote in osds.remotes.iterkeys():
+    for remote in osds.remotes.keys():
         for role in osds.remotes[remote]:
             if string.find(role, "osd.") != 0:
                 continue
@@ -523,7 +523,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
                     ERRORS += 1
 
     log.info("Test pg logging")
-    for remote in osds.remotes.iterkeys():
+    for remote in osds.remotes.keys():
         for role in osds.remotes[remote]:
             if string.find(role, "osd.") != 0:
                 continue
@@ -555,7 +555,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
 
     log.info("Test pg export")
     EXP_ERRORS = 0
-    for remote in osds.remotes.iterkeys():
+    for remote in osds.remotes.keys():
         for role in osds.remotes[remote]:
             if string.find(role, "osd.") != 0:
                 continue
@@ -582,7 +582,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
 
     log.info("Test pg removal")
     RM_ERRORS = 0
-    for remote in osds.remotes.iterkeys():
+    for remote in osds.remotes.keys():
         for role in osds.remotes[remote]:
             if string.find(role, "osd.") != 0:
                 continue
@@ -608,7 +608,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
     if EXP_ERRORS == 0 and RM_ERRORS == 0:
         log.info("Test pg import")
 
-        for remote in osds.remotes.iterkeys():
+        for remote in osds.remotes.keys():
             for role in osds.remotes[remote]:
                 if string.find(role, "osd.") != 0:
                     continue
@@ -643,7 +643,7 @@ def test_objectstore(ctx, config, cli_remote, REP_POOL, REP_NAME, ec=False):
         time.sleep(5)
         # Let scrub after test runs verify consistency of all copies
         log.info("Verify replicated import data")
-        objects = range(1, NUM_OBJECTS + 1)
+        objects = list(range(1, NUM_OBJECTS + 1))
         for i in objects:
             NAME = REP_NAME + "{num}".format(num=i)
             TESTNAME = os.path.join(DATADIR, "gettest")

@@ -2,7 +2,7 @@
 """
 watch_notify_same_primary task
 """
-from cStringIO import StringIO
+from io import StringIO
 import contextlib
 import logging
 
@@ -41,10 +41,10 @@ def task(ctx, config):
     clients = config.get('clients', ['client.0'])
     assert len(clients) == 1
     role = clients[0]
-    assert isinstance(role, basestring)
+    assert isinstance(role, str)
     PREFIX = 'client.'
     assert role.startswith(PREFIX)
-    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+    (remote,) = iter(ctx.cluster.only(role).remotes.keys())
     manager = ctx.managers['ceph']
     manager.raw_cluster_cmd('osd', 'set', 'noout')
 

@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 
 from teuthology.exceptions import CommandFailedError
 
-from mgr_test_case import MgrTestCase
+from .mgr_test_case import MgrTestCase
 
 
 log = logging.getLogger(__name__)

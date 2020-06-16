@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import contextlib
 import logging
-from cStringIO import StringIO
+from io import StringIO
 import textwrap
 from configparser import ConfigParser
 import time
@@ -58,8 +58,8 @@ def install(ctx, config):
     if not isinstance(config, dict):
         raise TypeError("config must be a dict")
 
-    devstack_node = ctx.cluster.only(is_devstack_node).remotes.keys()[0]
-    an_osd_node = ctx.cluster.only(is_osd_node).remotes.keys()[0]
+    devstack_node = list(ctx.cluster.only(is_devstack_node).remotes.keys())[0]
+    an_osd_node = list(ctx.cluster.only(is_osd_node).remotes.keys())[0]
 
     devstack_branch = config.get("branch", "master")
     install_devstack(devstack_node, devstack_branch)
@@ -208,7 +208,7 @@ def update_devstack_config_files(devstack_node, secret_uuid):
                       section='DEFAULT'):
         parser = ConfigParser()
         parser.read_file(config_stream)
-        for (key, value) in update_dict.items():
+        for (key, value) in list(update_dict.items()):
             parser.set(section, key, value)
         out_stream = StringIO()
         parser.write(out_stream)
@@ -305,7 +305,7 @@ def exercise(ctx, config):
     if not isinstance(config, dict):
         raise TypeError("config must be a dict")
 
-    devstack_node = ctx.cluster.only(is_devstack_node).remotes.keys()[0]
+    devstack_node = list(ctx.cluster.only(is_devstack_node).remotes.keys())[0]
 
     # TODO: save the log *and* preserve failures
     #devstack_archive_dir = create_devstack_archive(ctx, devstack_node)
@@ -332,8 +332,8 @@ def create_devstack_archive(ctx, devstack_node):
 def smoke(ctx, config):
     log.info("Running a basic smoketest...")
 
-    devstack_node = ctx.cluster.only(is_devstack_node).remotes.keys()[0]
-    an_osd_node = ctx.cluster.only(is_osd_node).remotes.keys()[0]
+    devstack_node = list(ctx.cluster.only(is_devstack_node).remotes.keys())[0]
+    an_osd_node = list(ctx.cluster.only(is_osd_node).remotes.keys())[0]
 
     try:
         create_volume(devstack_node, an_osd_node, 'smoke0', 1)

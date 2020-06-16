@@ -1,7 +1,7 @@
 """
 Test Swift API
 """
-from cStringIO import StringIO
+from io import StringIO
 from configobj import ConfigObj
 import base64
 import contextlib
@@ -26,7 +26,7 @@ def download(ctx, config):
     testdir = teuthology.get_testdir(ctx)
     assert isinstance(config, dict)
     log.info('Downloading swift...')
-    for (client, cconf) in config.items():
+    for (client, cconf) in list(config.items()):
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
@@ -40,7 +40,7 @@ def download(ctx, config):
     finally:
         log.info('Removing swift...')
         testdir = teuthology.get_testdir(ctx)
-        for (client, _) in config.items():
+        for (client, _) in list(config.items()):
             ctx.cluster.only(client).run(
                 args=[
                     'rm',
@@ -72,9 +72,9 @@ def create_users(ctx, config):
     log.info('Creating rgw users...')
     testdir = teuthology.get_testdir(ctx)
     users = {'': 'foo', '2': 'bar'}
-    for client, testswift_conf in config.iteritems():
+    for client, testswift_conf in config.items():
         cluster_name, daemon_type, client_id = teuthology.split_role(client)
-        for suffix, user in users.iteritems():
+        for suffix, user in users.items():
             _config_user(testswift_conf, '{user}.{client}'.format(user=user, client=client), user, suffix)
             ctx.cluster.only(client).run(
                 args=[
@@ -96,8 +96,8 @@ def create_users(ctx, config):
     try:
         yield
     finally:
-        for client in config.iterkeys():
-            for user in users.itervalues():
+        for client in config.keys():
+            for user in users.values():
                 uid = '{user}.{client}'.format(user=user, client=client)
                 cluster_name, daemon_type, client_id = teuthology.split_role(client)
                 ctx.cluster.only(client).run(
@@ -122,8 +122,8 @@ def configure(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring testswift...')
     testdir = teuthology.get_testdir(ctx)
-    for client, testswift_conf in config.iteritems():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+    for client, testswift_conf in config.items():
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         remote.run(
             args=[
                 'cd',
@@ -149,7 +149,7 @@ def run_tests(ctx, config):
     """
     assert isinstance(config, dict)
     testdir = teuthology.get_testdir(ctx)
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         args = [
                 'SWIFT_TEST_CONFIG_FILE={tdir}/archive/testswift.{client}.conf'.format(tdir=testdir, client=client),
                 '{tdir}/swift/virtualenv/bin/nosetests'.format(tdir=testdir),
@@ -218,9 +218,9 @@ def task(ctx, config):
 
     testswift_conf = {}
     clients = []
-    for client, client_config in config.iteritems():
+    for client, client_config in config.items():
         # http://tracker.ceph.com/issues/40304 can't bootstrap on rhel 7.6+
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         if remote.os.name == 'rhel' and LooseVersion(remote.os.version) >= LooseVersion('7.6'):
             log.warning('Swift tests cannot run on rhel 7.6+, skipping client {}'.format(client))
             continue
@@ -246,7 +246,7 @@ def task(ctx, config):
     # only take config for valid clients
     config = {c: config[c] for c in clients}
 
-    log.info('clients={c}'.format(c=config.keys()))
+    log.info('clients={c}'.format(c=list(config.keys())))
     with contextutil.nested(
         lambda: download(ctx=ctx, config=config),
         lambda: create_users(ctx=ctx, config=testswift_conf),

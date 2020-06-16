@@ -545,7 +545,7 @@ class TestStrays(CephFSTestCase):
 
     def _is_stopped(self, rank):
         mds_map = self.fs.get_mds_map()
-        return rank not in [i['rank'] for i in mds_map['info'].values()]
+        return rank not in [i['rank'] for i in list(mds_map['info'].values())]
 
     def test_purge_on_shutdown(self):
         """

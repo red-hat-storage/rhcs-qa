@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
+
 
 import logging
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import six
 
 from .helper import DashboardTestCase, JObj, JList, JLeaf
@@ -219,7 +219,7 @@ class RgwBucketTest(RgwTestCase):
 
         # Get the bucket.
         data = self._get('/api/rgw/bucket/{}'.format(
-            urllib.quote_plus('testx/teuth-test-bucket')))
+            urllib.parse.quote_plus('testx/teuth-test-bucket')))
         self.assertStatus(200)
         self.assertSchema(data, JObj(sub_elems={
             'owner': JLeaf(str),
@@ -235,21 +235,21 @@ class RgwBucketTest(RgwTestCase):
         # Update the bucket.
         self._put(
             '/api/rgw/bucket/{}'.format(
-                urllib.quote_plus('testx/teuth-test-bucket')),
+                urllib.parse.quote_plus('testx/teuth-test-bucket')),
             params={
                 'bucket_id': data['id'],
                 'uid': 'admin'
             })
         self.assertStatus(200)
         data = self._get('/api/rgw/bucket/{}'.format(
-            urllib.quote_plus('testx/teuth-test-bucket')))
+            urllib.parse.quote_plus('testx/teuth-test-bucket')))
         self.assertStatus(200)
         self.assertIn('owner', data)
         self.assertEqual(data['owner'], 'admin')
 
         # Delete the bucket.
         self._delete('/api/rgw/bucket/{}'.format(
-            urllib.quote_plus('testx/teuth-test-bucket')))
+            urllib.parse.quote_plus('testx/teuth-test-bucket')))
         self.assertStatus(204)
         data = self._get('/api/rgw/bucket')
         self.assertStatus(200)

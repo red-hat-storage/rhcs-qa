@@ -31,8 +31,8 @@ def install_packages(ctx, config):
 	'deb': [ 'libffi-dev', 'libssl-dev', 'libldap2-dev', 'libsasl2-dev' ],
 	'rpm': [ 'libffi-devel', 'openssl-devel' ],
     }
-    for (client, _) in config.items():
-        (remote,) = ctx.cluster.only(client).remotes.iterkeys()
+    for (client, _) in list(config.items()):
+        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
         for dep in deps[remote.os.package_type]:
             install_package(dep, remote)
     try:
@@ -40,8 +40,8 @@ def install_packages(ctx, config):
     finally:
         log.info('Removing packaged dependencies of Keystone...')
 
-        for (client, _) in config.items():
-            (remote,) = ctx.cluster.only(client).remotes.iterkeys()
+        for (client, _) in list(config.items()):
+            (remote,) = iter(ctx.cluster.only(client).remotes.keys())
             for dep in deps[remote.os.package_type]:
                 remove_package(dep, remote)
 
@@ -80,7 +80,7 @@ def download(ctx, config):
     log.info('Downloading keystone...')
     keystonedir = get_keystone_dir(ctx)
 
-    for (client, cconf) in config.items():
+    for (client, cconf) in list(config.items()):
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
@@ -120,7 +120,7 @@ def setup_venv(ctx, config):
     """
     assert isinstance(config, dict)
     log.info('Setting up virtualenv for keystone...')
-    for (client, _) in config.items():
+    for (client, _) in list(config.items()):
         run_in_keystone_dir(ctx, client,
             [   'source',
 		'{tvdir}/bin/activate'.format(tvdir=get_toxvenv_dir(ctx)),
@@ -141,7 +141,7 @@ def configure_instance(ctx, config):
     log.info('Configuring keystone...')
 
     keyrepo_dir = '{kdir}/etc/fernet-keys'.format(kdir=get_keystone_dir(ctx))
-    for (client, _) in config.items():
+    for (client, _) in list(config.items()):
         # prepare the config file
         run_in_keystone_dir(ctx, client,
             [
@@ -175,8 +175,8 @@ def run_keystone(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring keystone...')
 
-    for (client, _) in config.items():
-        (remote,) = ctx.cluster.only(client).remotes.iterkeys()
+    for (client, _) in list(config.items()):
+        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
         cluster_name, _, client_id = teuthology.split_role(client)
 
         # start the public endpoint
@@ -270,7 +270,7 @@ def run_section_cmds(ctx, cclient, section_cmd, special,
     for section_item in section_config_list:
         run_in_keystone_venv(ctx, cclient,
             [ 'openstack' ] + section_cmd.split() +
-            dict_to_args(special, auth_section + section_item.items()))
+            dict_to_args(special, auth_section + list(section_item.items())))
 
 def create_endpoint(ctx, cclient, service, url):
     endpoint_section = {
@@ -284,7 +284,7 @@ def create_endpoint(ctx, cclient, service, url):
 def fill_keystone(ctx, config):
     assert isinstance(config, dict)
 
-    for (cclient, cconfig) in config.items():
+    for (cclient, cconfig) in list(config.items()):
         # configure tenants/projects
         run_section_cmds(ctx, cclient, 'project create', 'name',
                          cconfig['tenants'])
@@ -317,7 +317,7 @@ def assign_ports(ctx, config, initial_port):
     """
     port = initial_port
     role_endpoints = {}
-    for remote, roles_for_host in ctx.cluster.remotes.iteritems():
+    for remote, roles_for_host in ctx.cluster.remotes.items():
         for role in roles_for_host:
             if role in config:
                 role_endpoints[role] = (remote.name.split('@')[1], port)

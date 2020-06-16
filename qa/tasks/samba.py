@@ -22,11 +22,11 @@ def get_sambas(ctx, roles):
     :param roles: roles for this test (extracted from yaml files)
     """
     for role in roles:
-        assert isinstance(role, basestring)
+        assert isinstance(role, str)
         PREFIX = 'samba.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
         yield (id_, remote)
 
 
@@ -92,7 +92,7 @@ def task(ctx, config):
     elif isinstance(config, list):
         config = dict((name, None) for name in config)
 
-    samba_servers = list(get_sambas(ctx=ctx, roles=config.keys()))
+    samba_servers = list(get_sambas(ctx=ctx, roles=list(config.keys())))
 
     testdir = teuthology.get_testdir(ctx)
 
@@ -115,7 +115,7 @@ def task(ctx, config):
                 log.error("samba config for role samba.{id_} must have only one parameter".format(id_=id_))
                 raise Exception('invalid config')
             confextras = ""
-            (unc, backendstr) = config[rolestr].items()[0]
+            (unc, backendstr) = list(config[rolestr].items())[0]
             backend = backendstr.format(testdir=testdir)
 
         # on first samba role, set ownership and permissions of ceph root
@@ -196,7 +196,7 @@ def task(ctx, config):
                 exc_info = sys.exc_info()
                 log.exception('Saw exception from %s.%s', d.role, d.id_)
         if exc_info != (None, None, None):
-            raise exc_info[0], exc_info[1], exc_info[2]
+            raise exc_info[0](exc_info[1]).with_traceback(exc_info[2])
 
         for id_, remote in samba_servers:
             remote.run(
