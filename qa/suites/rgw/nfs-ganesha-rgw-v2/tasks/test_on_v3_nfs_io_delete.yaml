@@ -1,5 +1,6 @@
 tasks:
 - ssh-keys: null
+- install.ship_utilities:
 - rhceph_ansible: null
 - nfs_ganesha_rgw_v2:
     test-name: test_on_nfs_io_delete

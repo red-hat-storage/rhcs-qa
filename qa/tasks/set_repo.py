@@ -24,22 +24,23 @@ repos_13x = ['rhel-7-server-rhceph-1.3-mon-rpms',
              'rhel-7-server-rhceph-1.3-tools-rpms']
 
 repos_20 = ['rhel-7-server-rhceph-2-mon-rpms',
-             'rhel-7-server-rhceph-2-osd-rpms',
-             'rhel-7-server-rhceph-2-tools-rpms',
-             'rhel-7-server-rhscon-2-agent-rpms',
-             'rhel-7-server-rhscon-2-installer-rpms',
-             'rhel-7-server-rhscon-2-main-rpms']
+            'rhel-7-server-rhceph-2-osd-rpms',
+            'rhel-7-server-rhceph-2-tools-rpms',
+            'rhel-7-server-rhscon-2-agent-rpms',
+            'rhel-7-server-rhscon-2-installer-rpms',
+            'rhel-7-server-rhscon-2-main-rpms']
 
-repos_30 = [ 
-             'rhel-7-server-rhceph-3-mon-rpms',
-             'rhel-7-server-rhceph-3-osd-rpms',
-             'rhel-7-server-rhceph-3-tools-rpms',
-           ]
+repos_30 = [
+    'rhel-7-server-rhceph-3-mon-rpms',
+    'rhel-7-server-rhceph-3-osd-rpms',
+    'rhel-7-server-rhceph-3-tools-rpms',
+]
 
 GA_BUILDS = ['1.3.2',
              '1.3.3',
              '2.0',
              '3.0']
+
 
 @contextlib.contextmanager
 def task(ctx, config):
@@ -65,7 +66,7 @@ def task(ctx, config):
         repo = config.get('repo')
         supported_repos.update(repo)
     log.info("Backing up current repo's and disable firewall")
-    for remote in ctx.cluster.remotes.iterkeys():
+    for remote in ctx.cluster.remotes.keys():
         if remote.os.package_type == 'rpm':
             remote.run(args=['mkdir', 'repo'], check_status=False)
             remote.run(args=['sudo', 'mv', run.Raw('/etc/yum.repos.d/*'), 'repo/'])
@@ -75,7 +76,7 @@ def task(ctx, config):
     build = config.get('rhbuild')
     repo_url = supported_repos.get(build, None)
     log.info("Setting the repo for build %s", build)
-    for remote in ctx.cluster.remotes.iterkeys():
+    for remote in ctx.cluster.remotes.keys():
         if remote.os.package_type == 'rpm':
             if build == '1.3.2' or build == '1.3.3':
                 enable_cdn_repo(remote, repos_13x)
@@ -98,7 +99,7 @@ def task(ctx, config):
         yield
     finally:
         log.info("Resotring repo's")
-        for remote in ctx.cluster.remotes.iterkeys():
+        for remote in ctx.cluster.remotes.keys():
             if remote.os.package_type == 'rpm':
                 remote.run(args=['sudo', 'cp', run.Raw('repo/*'), '/etc/yum.repos.d/'])
                 remote.run(args=['sudo', 'rm', '/etc/yum.repos.d/rh_ceph.repo'], check_status=False)
@@ -107,17 +108,19 @@ def task(ctx, config):
                 if build == '1.3.2':
                     disable_cdn_repo(remote, repos_13x)
 
+
 def set_cdn_repo(ctx, config):
     build = config.get('rhbuild')
     with parallel() as p:
-        for remote in ctx.cluster.remotes.iterkeys():
+        for remote in ctx.cluster.remotes.keys():
             if remote.os.package_type == 'rpm':
-                    if build == '1.3.2' or build == '1.3.3':
-                        p.spawn(enable_cdn_repo, remote, repos_13x)
-                    elif build == '2.0':
-                        p.spawn(enable_cdn_repo, remote, repos_20)
-                    elif build == '3.0':
-                        p.spawn(enable_cdn_repo, remote, repos_30)
+                if build == '1.3.2' or build == '1.3.3':
+                    p.spawn(enable_cdn_repo, remote, repos_13x)
+                elif build == '2.0':
+                    p.spawn(enable_cdn_repo, remote, repos_20)
+                elif build == '3.0':
+                    p.spawn(enable_cdn_repo, remote, repos_30)
+
 
 def enable_cdn_repo(remote, repos):
     remote.run(args=['sudo', 'subscription-manager', 'repos', run.Raw('--disable=*')])
@@ -155,4 +158,3 @@ def set_repo_simple(remote, config):
                 '/etc/yum.repos.d/rh_ceph.repo',
                 build_repo])
         remote.run(args=['sudo', 'yum', 'clean', 'metadata'])
-

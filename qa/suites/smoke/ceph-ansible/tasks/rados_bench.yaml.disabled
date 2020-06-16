@@ -1,7 +1,7 @@
 tasks:
 - ssh-keys:
-- rhceph_ansible:
 - install.ship_utilities:
+- rhceph_ansible:
 - full_sequential:
   - radosbench:
       clients: [client.0]

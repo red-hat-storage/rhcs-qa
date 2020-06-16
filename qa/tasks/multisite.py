@@ -4,20 +4,20 @@ import json
 import logging
 import os
 import errno
-import util.multisite_rgw as rgw_utils
+from . import util.multisite_rgw as rgw_utils
 
 from requests.packages.urllib3 import PoolManager
 from requests.packages.urllib3.util import Retry
 
-from cStringIO import StringIO
+from io import StringIO
 
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.orchestra.run import CommandFailedError
 # from util.rgw import rgwadmin
-from util.multisite_rgw import rgwadmin, get_config_master_client, extract_zone_info, extract_region_info
-from util.multisite_rados import (rados, create_ec_pool,
+from .util.multisite_rgw import rgwadmin, get_config_master_client, extract_zone_info, extract_region_info
+from .util.multisite_rados import (rados, create_ec_pool,
                                         create_replicated_pool,
                                         create_cache_pool)
 
@@ -34,12 +34,12 @@ def start_rgw(ctx, config, on_client = None, except_client = None):
     log.debug('client %r', on_client)
     clients_to_run = [on_client]
     if on_client is None:
-        clients_to_run = config.keys()
+        clients_to_run = list(config.keys())
     testdir = teuthology.get_testdir(ctx)
     for client in clients_to_run:
         if client == except_client:
             continue
-        (remote,) = ctx.cluster.only(client).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
         cluster_name, daemon_type, client_id = teuthology.split_role(client)
         client_with_id = daemon_type + '.' + client_id
         client_with_cluster = cluster_name + '.' + client_with_id
@@ -115,7 +115,7 @@ def start_rgw(ctx, config, on_client = None, except_client = None):
         yield
     finally:
         teuthology.stop_daemons_of_type(ctx, 'rgw')
-        for client in config.iterkeys():
+        for client in config.keys():
             ctx.cluster.only(client).run(
                 args=[
                     'rm',
@@ -154,7 +154,7 @@ def fill_in_endpoints(region_info, role_zones, role_endpoints):
     :param role_zones: region and zone information.
     :param role_endpoints: endpoints being used
     """
-    for role, (host, port) in role_endpoints.iteritems():
+    for role, (host, port) in role_endpoints.items():
         region, zone, _ = role_zones[role]
         host, port = role_endpoints[role]
         endpoint = 'http://{host}:{port}/'.format(host=host, port=port)
@@ -195,11 +195,11 @@ def configure_users_for_client(ctx, config, client, everywhere=False):
     # configured.
     clients_to_create_as = [client]
     if everywhere:
-        clients_to_create_as = config.keys()
+        clients_to_create_as = list(config.keys())
 
     # extract the user info and append it to the payload tuple for the given
     # client
-    for client, c_config in config.iteritems():
+    for client, c_config in config.items():
         if not c_config:
             continue
         user_info = extract_user_info(c_config)
@@ -227,7 +227,7 @@ def assign_ports(ctx, config):
 
     port = 8080
     role_endpoints = {}
-    for remote, roles_for_host in ctx.cluster.remotes.iteritems():
+    for remote, roles_for_host in ctx.cluster.remotes.items():
         for role in roles_for_host:
             if role in config:
                 role_endpoints[role] = (remote.name.split('@')[1], port)
@@ -263,12 +263,12 @@ def configure_multisite_regions_and_zones(ctx, config, regions, role_endpoints, 
     log.debug('realm is %r', realm)
     # extract the zone info
     role_zones = dict([(client, extract_zone_info(ctx, client, c_config))
-                       for client, c_config in config.iteritems()])
+                       for client, c_config in config.items()])
     log.debug('role_zones = %r', role_zones)
 
     # extract the user info and append it to the payload tuple for the given
     # client
-    for client, c_config in config.iteritems():
+    for client, c_config in config.items():
         if not c_config:
             user_info = None
         else:
@@ -279,7 +279,7 @@ def configure_multisite_regions_and_zones(ctx, config, regions, role_endpoints, 
 
     region_info = dict([
         (region_name, extract_region_info(region_name, r_config))
-        for region_name, r_config in regions.iteritems()])
+        for region_name, r_config in regions.items()])
 
     fill_in_endpoints(region_info, role_zones, role_endpoints)
 
@@ -291,10 +291,10 @@ def configure_multisite_regions_and_zones(ctx, config, regions, role_endpoints, 
     # clear out the old defaults
     cluster_name, daemon_type, client_id = teuthology.split_role(master_client)
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
 
     # read master zonegroup and master_zone
-    for zonegroup, zg_info in region_info.iteritems():
+    for zonegroup, zg_info in region_info.items():
         if zg_info['is_master']:
             master_zonegroup = zonegroup
             master_zone = zg_info['master_zone']
@@ -355,12 +355,12 @@ def pull_configuration(ctx, config, regions, role_endpoints, realm, master_clien
 
     # extract the zone info
     role_zones = dict([(client, extract_zone_info(ctx, client, c_config))
-                       for client, c_config in config.iteritems()])
+                       for client, c_config in config.items()])
     log.debug('roles_zones = %r', role_zones)
 
     # extract the user info and append it to the payload tuple for the given
     # client
-    for client, c_config in config.iteritems():
+    for client, c_config in config.items():
         if not c_config:
             user_info = None
         else:
@@ -371,11 +371,11 @@ def pull_configuration(ctx, config, regions, role_endpoints, realm, master_clien
 
     region_info = dict([
         (region_name, extract_region_info(region_name, r_config))
-        for region_name, r_config in regions.iteritems()])
+        for region_name, r_config in regions.items()])
 
     fill_in_endpoints(region_info, role_zones, role_endpoints)
 
-    for client in config.iterkeys():
+    for client in config.keys():
         if client != master_client:
             host, port = role_endpoints[master_client]
             endpoint = 'http://{host}:{port}/'.format(host=host, port=port)

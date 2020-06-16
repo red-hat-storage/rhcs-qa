@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
+
 
 import json
 
@@ -99,7 +99,7 @@ class OsdTest(DashboardTestCase):
 
     def test_safe_to_destroy(self):
         osd_dump = json.loads(self._ceph_cmd(['osd', 'dump', '-f', 'json']))
-        unused_osd_id = max(map(lambda e: e['osd'], osd_dump['osds'])) + 10
+        unused_osd_id = max([e['osd'] for e in osd_dump['osds']]) + 10
         self._get('/api/osd/{}/safe_to_destroy'.format(unused_osd_id))
         self.assertStatus(200)
         self.assertJsonBody({

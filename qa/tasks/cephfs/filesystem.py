@@ -1,5 +1,4 @@
 
-from StringIO import StringIO
 import json
 import logging
 from gevent import Greenlet
@@ -10,6 +9,9 @@ import re
 import errno
 import random
 import traceback
+
+from io import BytesIO
+from io import StringIO
 
 from teuthology.exceptions import CommandFailedError
 from teuthology import misc
@@ -161,14 +163,14 @@ class FSStatus(object):
         if info:
             return info['addr']
         else:
-            log.warn(json.dumps(list(self.get_all()), indent=2))  # dump for debugging
+            log.warning(json.dumps(list(self.get_all()), indent=2))  # dump for debugging
             raise RuntimeError("MDS id '{0}' not found in map".format(name))
 
 class CephCluster(object):
     @property
     def admin_remote(self):
         first_mon = misc.get_first_mon(self._ctx, None)
-        (result,) = self._ctx.cluster.only(first_mon).remotes.iterkeys()
+        (result,) = self._ctx.cluster.only(first_mon).remotes.keys()
         return result
 
     def __init__(self, ctx):
@@ -261,7 +263,8 @@ class MDSCluster(CephCluster):
             return super(MDSCluster, self).get_config(key, service_type)
 
         # Some tests stop MDS daemons, don't send commands to a dead one:
-        service_id = random.sample(filter(lambda i: self.mds_daemons[i].running(), self.mds_daemons), 1)[0]
+        running_daemons = [i for i, mds in self.mds_daemons.items() if mds.running()]
+        service_id = random.sample(running_daemons, 1)[0]
         return self.json_asok(['config', 'get', key], service_type, service_id)[key]
 
     def mds_stop(self, mds_id=None):
@@ -431,6 +434,9 @@ class Filesystem(MDSCluster):
         # poke our methods.
         if not hasattr(self._ctx, "filesystem"):
             self._ctx.filesystem = self
+
+    def get_task_status(self, status_key):
+        return self.mon_manager.get_service_task_status("mds", status_key)
 
     def getinfo(self, refresh = False):
         status = self.status()
@@ -669,7 +675,7 @@ class Filesystem(MDSCluster):
         if refresh or self.data_pools is None:
             self.get_pool_names(refresh = True)
         assert(len(self.data_pools) == 1)
-        return self.data_pools.values()[0]
+        return next(iter(self.data_pools.values()))
 
     def get_data_pool_id(self, refresh = False):
         """
@@ -679,12 +685,12 @@ class Filesystem(MDSCluster):
         if refresh or self.data_pools is None:
             self.get_pool_names(refresh = True)
         assert(len(self.data_pools) == 1)
-        return self.data_pools.keys()[0]
+        return next(iter(self.data_pools.keys()))
 
     def get_data_pool_names(self, refresh = False):
         if refresh or self.data_pools is None:
             self.get_pool_names(refresh = True)
-        return self.data_pools.values()
+        return list(self.data_pools.values())
 
     def get_metadata_pool_name(self):
         return self.metadata_pool_name
@@ -788,7 +794,8 @@ class Filesystem(MDSCluster):
         """
         mdsmap = self.get_mds_map(status)
         result = []
-        for mds_status in sorted(mdsmap['info'].values(), lambda a, b: cmp(a['rank'], b['rank'])):
+        for mds_status in sorted(mdsmap['info'].values(),
+                                 key=lambda _: _['rank']):
             if mds_status['state'] == state or state is None:
                 result.append(mds_status['name'])
 
@@ -806,7 +813,8 @@ class Filesystem(MDSCluster):
     def get_all_mds_rank(self, status=None):
         mdsmap = self.get_mds_map(status)
         result = []
-        for mds_status in sorted(mdsmap['info'].values(), lambda a, b: cmp(a['rank'], b['rank'])):
+        for mds_status in sorted(mdsmap['info'].values(),
+                                 key=lambda _: _['rank']):
             if mds_status['rank'] != -1 and mds_status['state'] != 'up:standby-replay':
                 result.append(mds_status['rank'])
 
@@ -856,7 +864,8 @@ class Filesystem(MDSCluster):
         """
         mdsmap = self.get_mds_map(status)
         result = []
-        for mds_status in sorted(mdsmap['info'].values(), lambda a, b: cmp(a['rank'], b['rank'])):
+        for mds_status in sorted(mdsmap['info'].values(),
+                                 key=lambda _: _['rank']):
             if mds_status['rank'] != -1 and mds_status['state'] != 'up:standby-replay':
                 result.append(mds_status['name'])
 
@@ -941,11 +950,9 @@ class Filesystem(MDSCluster):
             'sudo', os.path.join(self._prefix, 'rados'), '-p', self.metadata_pool_name, 'get', object_id, temp_bin_path
         ])
 
-        stdout = StringIO()
-        self.client_remote.run(args=[
+        dump_json = self.client_remote.sh([
             'sudo', os.path.join(self._prefix, 'ceph-dencoder'), 'type', object_type, 'import', temp_bin_path, 'decode', 'dump_json'
-        ], stdout=stdout)
-        dump_json = stdout.getvalue().strip()
+        ]).strip()
         try:
             dump = json.loads(dump_json)
         except (TypeError, ValueError):
@@ -1067,22 +1074,22 @@ class Filesystem(MDSCluster):
             os.path.join(self._prefix, "rados"), "-p", pool, "getxattr", obj_name, xattr_name
         ]
         try:
-            proc = remote.run(
-                args=args,
-                stdout=StringIO())
+            proc = remote.run(args=args, stdout=BytesIO())
         except CommandFailedError as e:
             log.error(e.__str__())
             raise ObjectNotFound(obj_name)
 
         data = proc.stdout.getvalue()
-
-        p = remote.run(
-            args=[os.path.join(self._prefix, "ceph-dencoder"), "type", type, "import", "-", "decode", "dump_json"],
-            stdout=StringIO(),
-            stdin=data
+        dump = remote.sh(
+            [os.path.join(self._prefix, "ceph-dencoder"),
+                                            "type", type,
+                                            "import", "-",
+                                            "decode", "dump_json"],
+            stdin=data,
+            stdout=StringIO()
         )
 
-        return json.loads(p.stdout.getvalue().strip())
+        return json.loads(dump.strip())
 
     def _write_data_xattr(self, ino_no, xattr_name, data, pool=None):
         """
@@ -1104,9 +1111,7 @@ class Filesystem(MDSCluster):
             os.path.join(self._prefix, "rados"), "-p", pool, "setxattr",
             obj_name, xattr_name, data
         ]
-        remote.run(
-            args=args,
-            stdout=StringIO())
+        remote.sh(args)
 
     def read_backtrace(self, ino_no, pool=None):
         """
@@ -1161,7 +1166,7 @@ class Filesystem(MDSCluster):
 
         want_objects = [
             "{0:x}.{1:08x}".format(ino, n)
-            for n in range(0, ((size - 1) / stripe_size) + 1)
+            for n in range(0, ((size - 1) // stripe_size) + 1)
         ]
 
         exist_objects = self.rados(["ls"], pool=self.get_data_pool_name()).split("\n")
@@ -1201,13 +1206,14 @@ class Filesystem(MDSCluster):
     def dirfrag_exists(self, ino, frag):
         try:
             self.rados(["stat", "{0:x}.{1:08x}".format(ino, frag)])
-        except CommandFailedError as e:
+        except CommandFailedError:
             return False
         else:
             return True
 
     def rados(self, args, pool=None, namespace=None, stdin_data=None,
-              stdin_file=None):
+              stdin_file=None,
+              stdout_data=None):
         """
         Call into the `rados` CLI from an MDS
         """
@@ -1228,11 +1234,12 @@ class Filesystem(MDSCluster):
 
         if stdin_file is not None:
             args = ["bash", "-c", "cat " + stdin_file + " | " + " ".join(args)]
+        if stdout_data is None:
+            stdout_data = StringIO()
 
-        p = remote.run(
-            args=args,
-            stdin=stdin_data,
-            stdout=StringIO())
+        p = remote.run(args=args,
+                       stdin=stdin_data,
+                       stdout=stdout_data)
         return p.stdout.getvalue().strip()
 
     def list_dirfrag(self, dir_ino):
@@ -1310,9 +1317,7 @@ class Filesystem(MDSCluster):
             base_args.extend(["--rank", "%s" % str(rank)])
 
         t1 = datetime.datetime.now()
-        r = self.tool_remote.run(
-            args=base_args + args,
-            stdout=StringIO()).stdout.getvalue().strip()
+        r = self.tool_remote.sh(script=base_args + args, stdout=StringIO()).strip()
         duration = datetime.datetime.now() - t1
         log.info("Ran {0} in time {1}, result:\n{2}".format(
             base_args + args, duration, r

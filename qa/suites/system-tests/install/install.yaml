@@ -1,3 +1,4 @@
 tasks:
 - ssh-keys: null
+- install.ship_utilities:
 - rhceph_ansible: null
