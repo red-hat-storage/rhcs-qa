@@ -5,7 +5,7 @@ from unittest import case
 from tasks.ceph_test_case import CephTestCase
 import os
 import re
-from StringIO import StringIO
+from io import StringIO
 
 from tasks.cephfs.fuse_mount import FuseMount
 
@@ -113,7 +113,7 @@ class CephFSTestCase(CephTestCase):
             blacklist = json.loads(self.mds_cluster.mon_manager.raw_cluster_cmd("osd",
                                   "dump", "--format=json-pretty"))['blacklist']
             log.info("Removing {0} blacklist entries".format(len(blacklist)))
-            for addr, blacklisted_at in blacklist.items():
+            for addr, blacklisted_at in list(blacklist.items()):
                 self.mds_cluster.mon_manager.raw_cluster_cmd("osd", "blacklist", "rm", addr)
 
         client_mount_ids = [m.client_id for m in self.mounts]
@@ -288,7 +288,7 @@ class CephFSTestCase(CephTestCase):
         test = sorted(test)
         for i in range(timeout/pause):
             subtrees = self.fs.mds_asok(["get", "subtrees"], mds_id=status.get_rank(self.fs.id, rank)['name'])
-            subtrees = filter(lambda s: s['dir']['path'].startswith('/'), subtrees)
+            subtrees = [s for s in subtrees if s['dir']['path'].startswith('/')]
             filtered = sorted([(s['dir']['path'], s['auth_first']) for s in subtrees])
             log.info("%s =?= %s", filtered, test)
             if filtered == test:

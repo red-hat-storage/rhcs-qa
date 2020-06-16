@@ -7,7 +7,7 @@ Reference:https://wiki.linuxfoundation.org/networking/netem.
 import logging
 import contextlib
 from teuthology import misc as teuthology
-from cStringIO import StringIO
+from io import StringIO
 from teuthology.orchestra import run
 from teuthology import contextutil
 from paramiko import SSHException
@@ -238,10 +238,10 @@ def task(ctx, config):
 
     if config.get('dst_client') is not None:
         dst = config.get('dst_client')
-        (host,) = ctx.cluster.only(dst).remotes.iterkeys()
+        (host,) = iter(ctx.cluster.only(dst).remotes.keys())
 
     for role in config.get('clients', None):
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
         ctx.netem.remote = remote
         if config.get('delay', False):
             static_delay(remote, host, config.get('iface'), config.get('delay'))
@@ -267,6 +267,6 @@ def task(ctx, config):
         if ctx.netem.names:
             toggle.cleanup()
         for role in config.get('clients'):
-            (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+            (remote,) = iter(ctx.cluster.only(role).remotes.keys())
             delete_dev(remote, config.get('iface'))
 

@@ -130,7 +130,7 @@ class TestModuleSelftest(MgrTestCase):
 
         # Stop ceph-mgr while we synthetically create a pre-mimic
         # configuration scenario
-        for mgr_id in self.mgr_cluster.mgr_daemons.keys():
+        for mgr_id in list(self.mgr_cluster.mgr_daemons.keys()):
             self.mgr_cluster.mgr_stop(mgr_id)
             self.mgr_cluster.mgr_fail(mgr_id)
 
@@ -162,7 +162,7 @@ class TestModuleSelftest(MgrTestCase):
 
         # Bring mgr daemons back online, the one that goes active
         # should be doing the upgrade.
-        for mgr_id in self.mgr_cluster.mgr_daemons.keys():
+        for mgr_id in list(self.mgr_cluster.mgr_daemons.keys()):
             self.mgr_cluster.mgr_restart(mgr_id)
 
         # Wait for a new active 
@@ -300,7 +300,7 @@ class TestModuleSelftest(MgrTestCase):
             "error": "ERR"
         }
         self._load_module("selftest")
-        for priority in priority_map.keys():
+        for priority in list(priority_map.keys()):
             message = "foo bar {}".format(priority)
             log_message = "[{}] {}".format(priority_map[priority], message)
             # Check for cluster/audit logs:

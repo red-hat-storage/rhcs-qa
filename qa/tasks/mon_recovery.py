@@ -2,7 +2,7 @@
 Monitor recovery
 """
 import logging
-import ceph_manager
+from . import ceph_manager
 from teuthology import misc as teuthology
 
 
@@ -17,7 +17,7 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         'task only accepts a dict for configuration'
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
 
     manager = ceph_manager.CephManager(
         mon,

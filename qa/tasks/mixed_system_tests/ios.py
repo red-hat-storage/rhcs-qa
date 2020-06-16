@@ -65,12 +65,12 @@ class rgw_ios:
         for role in self.config.get('clients', ['client.0']):
             wip_branch = cephqe_scripts["WIP_BRANCH"]
             master_branch = cephqe_scripts["MASTER_BRANCH"]
-            assert isinstance(role, basestring)
+            assert isinstance(role, str)
             prefix = 'client.'
             assert role.startswith(prefix)
             id_ = role[len(prefix):]
-            (remote,) = self.ctx.cluster.only(role).remotes.iterkeys()
-            map(self.cleanup, self.soot)
+            (remote,) = iter(self.ctx.cluster.only(role).remotes.keys())
+            list(map(self.cleanup, self.soot))
             remote.run(args=['mkdir', test_root_dir])
             log.info('cloning the repo to %s' % remote.hostname)
             remote.run(
@@ -139,7 +139,7 @@ class rgw_ios:
 
     def __exit__(self):
         for role in self.config.get('clients', ['client.0']):
-            (remote,) = self.ctx.cluster.only(role).remotes.iterkeys()
+            (remote,) = iter(self.ctx.cluster.only(role).remotes.keys())
             log.info('Test completed')
             log.info("Deleting leftovers")
-            map(self.cleanup, self.soot)
+            list(map(self.cleanup, self.soot))

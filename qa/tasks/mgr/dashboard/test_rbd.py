@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=too-many-public-methods
 
-from __future__ import absolute_import
+
 
 import time
 
@@ -209,7 +209,7 @@ class RbdTest(DashboardTestCase):
         })
         self.assertSchema(img, schema)
 
-        for k, v in kwargs.items():
+        for k, v in list(kwargs.items()):
             if isinstance(v, list):
                 self.assertSetEqual(set(img[k]), set(v))
             else:
@@ -223,7 +223,7 @@ class RbdTest(DashboardTestCase):
         self.assertIn('size', snap)
         self.assertIn('children', snap)
 
-        for k, v in kwargs.items():
+        for k, v in list(kwargs.items()):
             if isinstance(v, list):
                 self.assertSetEqual(set(snap[k]), set(v))
             else:
@@ -410,7 +410,7 @@ class RbdTest(DashboardTestCase):
     def test_delete_non_existent_image(self):
         res = self.remove_image('rbd', 'i_dont_exist')
         self.assertStatus(400)
-        self.assertEqual(res, {u'code': u'2', "status": 400, "component": "rbd",
+        self.assertEqual(res, {'code': '2', "status": 400, "component": "rbd",
                                "detail": "[errno 2] error removing image",
                                'task': {'name': 'rbd/delete',
                                         'metadata': {'pool_name': 'rbd',

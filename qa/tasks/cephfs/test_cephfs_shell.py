@@ -1,7 +1,7 @@
 import os
 import crypt
 import logging
-from StringIO import StringIO
+from io import StringIO
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError

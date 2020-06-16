@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
+
 
 import logging
 
@@ -55,7 +55,7 @@ class PoolTest(DashboardTestCase):
             pool_name = data['pool']
         pool = self._get_pool(pool_name)
         try:
-            for k, v in data.items():
+            for k, v in list(data.items()):
                 self._check_pool_property(k, v, pool)
 
         except Exception:
@@ -269,7 +269,7 @@ class PoolTest(DashboardTestCase):
         self.assertStatus(204)
 
     def test_pool_create_fail(self):
-        data = {'pool_type': u'replicated', 'rule_name': u'dnf', 'pg_num': u'8', 'pool': u'sadfs'}
+        data = {'pool_type': 'replicated', 'rule_name': 'dnf', 'pg_num': '8', 'pool': 'sadfs'}
         self._task_post('/api/pool/', data)
         self.assertStatus(400)
         self.assertJsonBody({

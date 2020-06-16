@@ -1,6 +1,6 @@
 
 
-from mgr_test_case import MgrTestCase
+from .mgr_test_case import MgrTestCase
 
 import json
 import logging

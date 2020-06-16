@@ -5,7 +5,7 @@ import logging
 from unittest import case, SkipTest
 from random import randint
 
-from cephfs_test_case import CephFSTestCase
+from .cephfs_test_case import CephFSTestCase
 from teuthology.exceptions import CommandFailedError
 from teuthology import misc as teuthology
 from tasks.cephfs.fuse_mount import FuseMount
@@ -267,7 +267,7 @@ class TestFailover(CephFSTestCase):
         # Wait for everyone to go laggy
         def laggy():
             mdsmap = self.fs.get_mds_map()
-            for info in mdsmap['info'].values():
+            for info in list(mdsmap['info'].values()):
                 if "laggy_since" not in info:
                     return False
 

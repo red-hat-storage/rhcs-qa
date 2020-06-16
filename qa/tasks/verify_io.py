@@ -44,7 +44,7 @@ def task(ctx, config):
         "task set-repo only supports a dictionary for configuration"
 
     remotes = ctx.cluster.only(teuthology.is_type('rgw'))
-    for remote, roles_for_host in remotes.remotes.iteritems():
+    for remote, roles_for_host in remotes.remotes.items():
 
         remote.run(args=['virtualenv', 'venv'])
         remote.run(
@@ -62,7 +62,7 @@ def task(ctx, config):
     finally:
 
         remotes = ctx.cluster.only(teuthology.is_type('rgw'))
-        for remote, roles_for_host in remotes.remotes.iteritems():
+        for remote, roles_for_host in remotes.remotes.items():
 
             log.info('Verification completed')
 

@@ -3,7 +3,7 @@ Multibench testing
 """
 import contextlib
 import logging
-import radosbench
+from . import radosbench
 import time
 import copy
 import gevent

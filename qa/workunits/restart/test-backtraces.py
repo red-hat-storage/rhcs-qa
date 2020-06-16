@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
+
 
 import subprocess
 import json
@@ -9,7 +9,7 @@ import time
 import sys
 
 if sys.version_info[0] == 2:
-    from cStringIO import StringIO
+    from io import StringIO
 
     range = xrange
 
@@ -47,7 +47,7 @@ def set_mds_config_param(ceph, param):
         if r != 0:
             raise Exception
 
-import ConfigParser
+import configparser
 import contextlib
 
 class _TrimIndentFile(object):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
+
 
 from .helper import DashboardTestCase, JObj
 
@@ -59,7 +59,7 @@ class PerfCountersControllerTest(DashboardTestCase):
 
     def test_perf_counters_not_found(self):
         osds = self.ceph_cluster.mon_manager.get_osd_dump()
-        unused_id = int(list(map(lambda o: o['osd'], osds)).pop()) + 1
+        unused_id = int(list([o['osd'] for o in osds]).pop()) + 1
 
         self._get('/api/perf_counters/osd/{}'.format(unused_id))
         self.assertStatus(404)

@@ -3,10 +3,10 @@ Special case divergence test with ceph-objectstore-tool export/remove/import
 """
 import logging
 import time
-from cStringIO import StringIO
+from io import StringIO
 
 from teuthology import misc as teuthology
-from util.rados import rados
+from .util.rados import rados
 import os
 
 
@@ -64,7 +64,7 @@ def task(ctx, config):
 
     log.info('writing initial objects')
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
+    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
     # write 100 objects
     for i in range(100):
         rados(ctx, mon, ['-p', 'foo', 'put', 'existing_%d' % i, dummyfile])
@@ -145,8 +145,8 @@ def task(ctx, config):
     manager.kill_osd(divergent)
 
     # Export a pg
-    (exp_remote,) = ctx.\
-        cluster.only('osd.{o}'.format(o=divergent)).remotes.iterkeys()
+    (exp_remote,) = iter(ctx.\
+        cluster.only('osd.{o}'.format(o=divergent)).remotes.keys())
     FSPATH = manager.get_filepath()
     JPATH = os.path.join(FSPATH, "journal")
     prefix = ("sudo adjust-ulimits ceph-objectstore-tool "

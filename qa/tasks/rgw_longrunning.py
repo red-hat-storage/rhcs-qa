@@ -7,7 +7,7 @@ from teuthology.orchestra import run
 log = logging.getLogger(__name__)
 import os
 import pwd
-import cStringIO
+import io
 import time
 
 log = logging.getLogger(__name__)
@@ -22,10 +22,10 @@ MEM_UNITS_CONV = {'MiB': 1024 ** 0,
 
 
 def get_cluster_size_info(clients):
-    out = cStringIO.StringIO()
+    out = io.StringIO()
     clients[0].run(args=['sudo', 'ceph', 'df'], stdout=out)
     var = out.readlines()
-    cluster_size = dict(zip(var[1].split(), var[2].split()))
+    cluster_size = dict(list(zip(var[1].split(), var[2].split())))
     return cluster_size
 
 
@@ -124,8 +124,8 @@ def task(ctx, config):
     remotes = ctx.cluster.only(teuthology.is_type('client'))
     clients = [
         remote for remote,
-                   roles_for_host in remotes.remotes.iteritems()]
-    map(cleanup, soot)
+                   roles_for_host in remotes.remotes.items()]
+    list(map(cleanup, soot))
     clients[0].run(args=['mkdir', test_root_dir])
     log.info('cloning the repo to %s' % clients[0].hostname)
     clients[0].run(
@@ -181,4 +181,4 @@ def task(ctx, config):
         cluster_size = get_cluster_size_info(clients)
         log.info('available: %s' % cluster_size['AVAIL'])
         log.info("Deleting leftovers")
-        map(cleanup, soot)
+        list(map(cleanup, soot))

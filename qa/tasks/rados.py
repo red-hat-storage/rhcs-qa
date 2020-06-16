@@ -200,7 +200,7 @@ def task(ctx, config):
             weights['append'] = weights['append'] / 2
             weights['append_excl'] = weights['append']
 
-    for op, weight in weights.iteritems():
+    for op, weight in weights.items():
         args.extend([
             '--op', op, str(weight)
         ])
@@ -223,7 +223,7 @@ def task(ctx, config):
             existing_pools = config.get('pools', [])
             created_pools = []
             for role in config.get('clients', clients):
-                assert isinstance(role, basestring)
+                assert isinstance(role, str)
                 PREFIX = 'client.'
                 assert role.startswith(PREFIX)
                 id_ = role[len(PREFIX):]
@@ -246,7 +246,7 @@ def task(ctx, config):
                         manager.raw_cluster_cmd(
                             'osd', 'pool', 'set', pool, 'min_size', str(min_size))
 
-                (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+                (remote,) = iter(ctx.cluster.only(role).remotes.keys())
                 proc = remote.run(
                     args=["CEPH_CLIENT_ID={id_}".format(id_=id_)] + args +
                     ["--pool", pool],
@@ -255,7 +255,7 @@ def task(ctx, config):
                     wait=False
                     )
                 tests[id_] = proc
-            run.wait(tests.itervalues())
+            run.wait(iter(tests.values()))
 
             for pool in created_pools:
                 manager.wait_snap_trimming_complete(pool);

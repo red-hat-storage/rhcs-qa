@@ -5,7 +5,7 @@ from teuthology import misc as teuthology
 from teuthology.orchestra import run
 import pwd
 import yaml
-import cStringIO
+import io
 import json
 import psutil
 import re
@@ -47,10 +47,10 @@ def task(ctx, config):
     log.info('got mount dir: %s' % mount_dir)
 
     remotes = ctx.cluster.only(teuthology.is_type('mon'))
-    mon = [remote for remote, roles_for_host in remotes.remotes.iteritems()]
+    mon = [remote for remote, roles_for_host in remotes.remotes.items()]
 
     rgw_remote = ctx.cluster.only(teuthology.is_type('rgw'))
-    rgw = [remote for remote, roles_for_host in rgw_remote.remotes.iteritems()]
+    rgw = [remote for remote, roles_for_host in rgw_remote.remotes.items()]
 
     # installing nfs-ganesha-selinux package
     if rgw[0].os.version.startswith('7'):
@@ -69,14 +69,14 @@ def task(ctx, config):
     rgw[0].run(args=['sudo', 'systemctl', 'stop', 'nfs-server.service'])  # systemctl stop nfs-server.service
     rgw[0].run(args=['sudo', 'systemctl', 'disable', 'nfs-server.service'])  # systemctl disable nfs-server.service
 
-    out = cStringIO.StringIO()
+    out = io.StringIO()
     mon[0].run(args=['sudo', 'cat', '/etc/ceph/ceph.client.admin.keyring'], stdout=out)
     v_as_out = out.read()
     teuthology.create_file(rgw[0], '/etc/ceph/ceph.client.admin.keyring', data=v_as_out, sudo=True)
 
     # parsing nfs_ganesha conf file
 
-    out = cStringIO.StringIO()
+    out = io.StringIO()
     rgw[0].run(args=['sudo', 'cat', '/etc/ganesha/ganesha.conf'],
                stdout=out)
     v_as_out = out.readlines()
@@ -178,4 +178,4 @@ def task(ctx, config):
         soot = ['venv', 'rgw-tests', 'test_data' '*.json', 'Download.*', 'Download', '*.mpFile', 'x*', 'key.*', 'Mp.*',
                 '*.key.*']
 
-        map(cleanup, soot)
+        list(map(cleanup, soot))

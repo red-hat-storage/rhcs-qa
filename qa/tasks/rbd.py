@@ -7,7 +7,7 @@ import os
 import tempfile
 import sys
 
-from cStringIO import StringIO
+from io import StringIO
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -47,7 +47,7 @@ def create_image(ctx, config):
         "task create_image only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        images = config.items()
+        images = list(config.items())
     else:
         images = [(role, None) for role in config]
 
@@ -58,7 +58,7 @@ def create_image(ctx, config):
         name = properties.get('image_name', default_image_name(role))
         size = properties.get('image_size', 10240)
         fmt = properties.get('image_format', 1)
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = list(ctx.cluster.only(role).remotes.keys())
         log.info('Creating image {name} with size {size}'.format(name=name,
                                                                  size=size))
         args = [
@@ -84,7 +84,7 @@ def create_image(ctx, config):
             if properties is None:
                 properties = {}
             name = properties.get('image_name', default_image_name(role))
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = list(ctx.cluster.only(role).remotes.keys())
             remote.run(
                 args=[
                     'adjust-ulimits',
@@ -115,7 +115,7 @@ def clone_image(ctx, config):
         "task clone_image only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        images = config.items()
+        images = list(config.items())
     else:
         images = [(role, None) for role in config]
 
@@ -130,7 +130,7 @@ def clone_image(ctx, config):
             "parent_name is required"
         parent_spec = '{name}@{snap}'.format(name=parent_name, snap=name)
 
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = list(ctx.cluster.only(role).remotes.keys())
         log.info('Clone image {parent} to {child}'.format(parent=parent_name,
                                                           child=name))
         for cmd in [('snap', 'create', parent_spec),
@@ -156,7 +156,7 @@ def clone_image(ctx, config):
             parent_name = properties.get('parent_name')
             parent_spec = '{name}@{snap}'.format(name=parent_name, snap=name)
 
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = list(ctx.cluster.only(role).remotes.keys())
 
             for cmd in [('rm', name),
                         ('snap', 'unprotect', parent_spec),
@@ -184,7 +184,7 @@ def modprobe(ctx, config):
     """
     log.info('Loading rbd kernel module...')
     for role in config:
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = list(ctx.cluster.only(role).remotes.keys())
         remote.run(
             args=[
                 'sudo',
@@ -197,7 +197,7 @@ def modprobe(ctx, config):
     finally:
         log.info('Unloading rbd kernel module...')
         for role in config:
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = list(ctx.cluster.only(role).remotes.keys())
             remote.run(
                 args=[
                     'sudo',
@@ -231,7 +231,7 @@ def dev_create(ctx, config):
         "task dev_create only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        role_images = config.items()
+        role_images = list(config.items())
     else:
         role_images = [(role, None) for role in config]
 
@@ -242,7 +242,7 @@ def dev_create(ctx, config):
     for role, image in role_images:
         if image is None:
             image = default_image_name(role)
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = list(ctx.cluster.only(role).remotes.keys())
 
         remote.run(
             args=[
@@ -269,7 +269,7 @@ def dev_create(ctx, config):
         for role, image in role_images:
             if image is None:
                 image = default_image_name(role)
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = list(ctx.cluster.only(role).remotes.keys())
             remote.run(
                 args=[
                     'LD_LIBRARY_PATH={tdir}/binary/usr/local/lib'.format(tdir=testdir),
@@ -344,18 +344,18 @@ def run_xfstests(ctx, config):
                 randomize: true
     """
     with parallel() as p:
-        for role, properties in config.items():
+        for role, properties in list(config.items()):
             p.spawn(run_xfstests_one_client, ctx, role, properties)
         exc_info = None
         while True:
             try:
-                p.next()
+                next(p)
             except StopIteration:
                 break
             except:
                 exc_info = sys.exc_info()
         if exc_info:
-            raise exc_info[0], exc_info[1], exc_info[2]
+            raise exc_info[0](exc_info[1]).with_traceback(exc_info[2])
     yield
 
 def run_xfstests_one_client(ctx, role, properties):
@@ -380,7 +380,7 @@ def run_xfstests_one_client(ctx, role, properties):
         exclude_list = properties.get('exclude')
         randomize = properties.get('randomize')
 
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = list(ctx.cluster.only(role).remotes.keys())
 
         # Fetch the test script
         test_root = teuthology.get_testdir(ctx)
@@ -482,7 +482,7 @@ def xfstests(ctx, config):
         "task xfstests only supports a list or dictionary for configuration"
     if isinstance(config, dict):
         config = teuthology.replace_all_with_clients(ctx.cluster, config)
-        runs = config.items()
+        runs = list(config.items())
     else:
         runs = [(role, None) for role in config]
 
@@ -490,7 +490,7 @@ def xfstests(ctx, config):
     for role, properties in runs:
         assert role.startswith('client.'), \
             "task xfstests can only run on client nodes"
-        for host, roles_for_host in ctx.cluster.remotes.items():
+        for host, roles_for_host in list(ctx.cluster.remotes.items()):
             if role in roles_for_host:
                 assert host not in running_xfstests, \
                     "task xfstests allows only one instance at a time per host"
@@ -605,7 +605,7 @@ def task(ctx, config):
         norm_config = teuthology.replace_all_with_clients(ctx.cluster, config)
     if isinstance(norm_config, dict):
         role_images = {}
-        for role, properties in norm_config.iteritems():
+        for role, properties in norm_config.items():
             if properties is None:
                 properties = {}
             role_images[role] = properties.get('image_name')

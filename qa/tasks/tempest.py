@@ -45,7 +45,7 @@ def download(ctx, config):
     """
     assert isinstance(config, dict)
     log.info('Downloading Tempest...')
-    for (client, cconf) in config.items():
+    for (client, cconf) in list(config.items()):
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
@@ -77,7 +77,7 @@ def setup_venv(ctx, config):
     """
     assert isinstance(config, dict)
     log.info('Setting up virtualenv for Tempest')
-    for (client, _) in config.items():
+    for (client, _) in list(config.items()):
         run_in_tempest_dir(ctx, client,
             [   '{tvdir}/bin/tox'.format(tvdir=get_toxvenv_dir(ctx)),
                 '-e', 'venv', '--notest'
@@ -89,7 +89,7 @@ def setup_logging(ctx, cpar):
     cpar.set('DEFAULT', 'log_file', 'tempest.log')
 
 def to_config(config, params, section, cpar):
-    for (k, v) in config[section].items():
+    for (k, v) in list(config[section].items()):
         if (isinstance(v, str)):
             v = v.format(**params)
         cpar.set(section, k, v)
@@ -99,8 +99,8 @@ def configure_instance(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring Tempest')
 
-    import ConfigParser
-    for (client, cconfig) in config.items():
+    import configparser
+    for (client, cconfig) in list(config.items()):
         run_in_tempest_venv(ctx, client,
             [
                 'tempest',
@@ -112,7 +112,7 @@ def configure_instance(ctx, config):
 
         # prepare the config file
         tetcdir = '{tdir}/rgw/etc'.format(tdir=get_tempest_dir(ctx))
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = list(ctx.cluster.only(client).remotes.keys())
         local_conf = remote.get_file(tetcdir + '/tempest.conf.sample')
 
         # fill the params dictionary which allows to use templatized configs
@@ -126,7 +126,7 @@ def configure_instance(ctx, config):
             'keystone_public_port': str(public_port),
         }
 
-        cpar = ConfigParser.ConfigParser()
+        cpar = configparser.ConfigParser()
         cpar.read(local_conf)
         setup_logging(ctx, cpar)
         to_config(cconfig, params, 'auth', cpar)
@@ -143,7 +143,7 @@ def run_tempest(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring Tempest')
 
-    for (client, cconf) in config.items():
+    for (client, cconf) in list(config.items()):
         blacklist = cconf.get('blacklist', [])
         assert isinstance(blacklist, list)
         run_in_tempest_venv(ctx, client,
@@ -238,11 +238,11 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = config.keys()
+    clients = list(config.keys())
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.
-    for client in config.iterkeys():
+    for client in config.keys():
         if not config[client]:
             config[client] = {}
         teuthology.deep_merge(config[client], overrides.get('keystone', {}))

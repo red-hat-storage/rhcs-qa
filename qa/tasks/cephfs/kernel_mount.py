@@ -1,4 +1,4 @@
-from StringIO import StringIO
+from io import StringIO
 import json
 import logging
 from textwrap import dedent
@@ -232,7 +232,7 @@ class KernelMount(CephFSMount):
             return client_id_to_dir[self.client_id]
         except KeyError:
             log.error("Client id '{0}' debug dir not found (clients seen were: {1})".format(
-                self.client_id, ",".join(client_id_to_dir.keys())
+                self.client_id, ",".join(list(client_id_to_dir.keys()))
             ))
             raise
 
