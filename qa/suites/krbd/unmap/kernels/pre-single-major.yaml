@@ -7,4 +7,4 @@ tasks:
     client.0:
     - "modprobe -r rbd"
     - "modprobe --first-time rbd"
-    - "test ! -f /sys/module/rbd/parameters/single_major"
+      #- "test ! -f /sys/module/rbd/parameters/single_major"
