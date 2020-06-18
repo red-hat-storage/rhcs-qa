@@ -10,7 +10,7 @@ import yaml
 import time
 import errno
 import socket
-from io import StringIO
+from six import StringIO
 
 from teuthology.task import Task
 from tempfile import NamedTemporaryFile
@@ -214,16 +214,10 @@ class CephAnsible(Task):
         self.ceph_installer = self.installer
         self.args = args
 
-        # ship utilities files
-        self._ship_utilities()
-
         # run ansible playbook
         self.run_rh_playbook()
         if self.config.get('haproxy', False):
             self.run_haproxy()
-
-        '''Redundant call but required for coverage'''
-        self._ship_utilities()
 
     def generate_hosts_file(self):
         """
@@ -257,9 +251,9 @@ class CephAnsible(Task):
                 elif hostname not in hosts_dict[group]:
                     hosts_dict[group][hostname] = host_vars
 
-        hosts_stringio = StringIO()
+        hosts_content = ''
         for group in sorted(hosts_dict.keys()):
-            hosts_stringio.write('[%s]\n' % group)
+            hosts_content += '[%s]\n' % group
             for hostname in sorted(hosts_dict[group].keys()):
                 vars = hosts_dict[group][hostname]
                 if vars:
@@ -274,13 +268,13 @@ class CephAnsible(Task):
                     )
                 else:
                     host_line = hostname
-                hosts_stringio.write('%s\n' % host_line)
-            hosts_stringio.write('\n')
-        hosts_stringio.seek(0)
-        self.inventory = self._write_hosts_file(
-            prefix='teuth_ansible_hosts_',
-            content=hosts_stringio.read().strip())
+                hosts_content += '%s\n' % host_line
+            hosts_content += '\n'
+
+        self.inventory = self._write_hosts_file(prefix='teuth_ansible_hosts_',
+                                                content=hosts_content.strip())
         self.generated_inventory = True
+
 
     @staticmethod
     def add_osddisk_info(ctx, remote, json_dir, json_list):
@@ -375,7 +369,7 @@ class CephAnsible(Task):
     def begin(self):
         super(CephAnsible, self).begin()
         self.execute_playbook()
-#        self.set_diskinfo_ctx()
+        # self.set_diskinfo_ctx()
 
     @staticmethod
     def _write_hosts_file(prefix, content):
@@ -383,6 +377,7 @@ class CephAnsible(Task):
         Actually write the hosts file
         """
         hosts_file = NamedTemporaryFile(prefix=prefix,
+                                        mode='w+',
                                         delete=False)
         hosts_file.write(content)
         hosts_file.flush()
@@ -394,8 +389,10 @@ class CephAnsible(Task):
         if self.playbook is not None:
             os.remove(self.playbook_file)
         os.remove(self.extra_vars_file)
+
         # collect logs
         self.collect_logs()
+
         # run purge-cluster that teardowns the cluster
         args = [
             'ANSIBLE_STDOUT_CALLBACK=debug',
@@ -406,6 +403,7 @@ class CephAnsible(Task):
         log.debug("Running %s", args)
         str_args = ' '.join(args)
         installer_node = self.ceph_installer
+
         # copy purge-cluster playbook from infra dir to top level dir
         # as required by ceph-ansible
         installer_node.run(
@@ -862,9 +860,9 @@ class CephAnsible(Task):
 
         self.ready_cluster = self.each_cluster
         log.info('Ready_cluster {}'.format(self.ready_cluster))
-        self._ship_utilities()
         self._create_rbd_pool()
         self._fix_roles_map()
+
         # fix keyring permission for workunits
         self.fix_keyring_permission()
         self.create_keyring()
@@ -967,20 +965,20 @@ class CephAnsible(Task):
             )
 
         ceph_installer.run(
-            args=(
+            args=[
                 'sed',
                 '-i',
                 '/defaults/ a\deprecation_warnings=False',
-                'ceph-ansible/ansible.cfg'))
+                'ceph-ansible/ansible.cfg'])
 
         # copy extra vars to groups/all
         ceph_installer.put_file(
             self.extra_vars_file,
             'ceph-ansible/group_vars/all')
         # print for debug info
-        ceph_installer.run(args=('cat', 'ceph-ansible/inven.yml'))
-        ceph_installer.run(args=('cat', 'ceph-ansible/site.yml'))
-        ceph_installer.run(args=('cat', 'ceph-ansible/group_vars/all'))
+        ceph_installer.run(args=['cat', 'ceph-ansible/inven.yml'])
+        ceph_installer.run(args=['cat', 'ceph-ansible/site.yml'])
+        ceph_installer.run(args=['cat', 'ceph-ansible/group_vars/all'])
 
     def _ship_utilities(self):
         with ship_utilities(self.ctx, {'skipcleanup': True}) as ship_utils:
@@ -1075,7 +1073,7 @@ class CephAnsible(Task):
 
     def _generate_client_config(self):
         ceph_installer = self.ceph_installer
-        ceph_installer.run(args=('touch', 'ceph-ansible/clients.yml'))
+        ceph_installer.run(args=['touch', 'ceph-ansible/clients.yml'])
         # copy admin key for all clients
         ceph_installer.run(
             args=[
@@ -1084,7 +1082,7 @@ class CephAnsible(Task):
                 'ceph-ansible/group_vars/clients'
             ]
         )
-        ceph_installer.run(args=('cat', 'ceph-ansible/group_vars/clients'))
+        ceph_installer.run(args=['cat', 'ceph-ansible/group_vars/clients'])
 
     def _create_rbd_pool(self):
         mon_node = self.ceph_first_mon
