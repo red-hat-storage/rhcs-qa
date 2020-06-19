@@ -2,6 +2,7 @@
 # multipart upload
 tasks:
   - ssh-keys: null
+  - install.ship_utilities:
   - rhceph_ansible: null
   - rgw-longrunning:
       test: Mbuckets_with_Nobjects_multipart

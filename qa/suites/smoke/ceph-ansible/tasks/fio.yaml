@@ -1,5 +1,6 @@
 tasks:
 - ssh-keys:
+- install.ship_utilities:
 - rhceph_ansible:
 - rbd_fio:
     client.0:

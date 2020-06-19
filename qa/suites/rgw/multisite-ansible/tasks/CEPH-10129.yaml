@@ -1,10 +1,10 @@
 tasks:
 - ssh-keys: null
+- install.ship_utilities: null
 - rhceph_ansible:
     cluster: c1
 - rhceph_ansible:
     cluster: c2
-- install.ship_utilities: null
 - new_rgw_multisite:
    realm:
      name: test-realm

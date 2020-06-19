@@ -1,5 +1,6 @@
 tasks:
 - ssh-keys: null
+- install.ship_utilities:
 - rhceph_ansible: null
 - rgw-system-test:
     test: test_acls_reset
