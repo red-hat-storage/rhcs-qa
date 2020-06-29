@@ -1,7 +1,8 @@
 """
 ceph manager -- Thrasher and CephManager objects
 """
-from io import StringIO
+from io import BytesIO
+from six import StringIO
 from functools import wraps
 import contextlib
 import random
@@ -16,8 +17,8 @@ import traceback
 import os
 from teuthology import misc as teuthology
 from tasks.scrub import Scrubber
-from .util.rados import cmd_erasure_code_profile
-from .util import get_remote
+from tasks.util.rados import cmd_erasure_code_profile
+from tasks.util import get_remote
 from teuthology.contextutil import safe_while
 from teuthology.orchestra.remote import Remote
 from teuthology.orchestra import run
@@ -34,7 +35,7 @@ log = logging.getLogger(__name__)
 
 
 def write_conf(ctx, conf_path=DEFAULT_CONF_PATH, cluster='ceph'):
-    conf_fp = StringIO()
+    conf_fp = BytesIO()
     ctx.ceph[cluster].conf.write(conf_fp)
     conf_fp.seek(0)
     writes = ctx.cluster.run(
@@ -183,8 +184,8 @@ class Thrasher:
         allremotes = list(set(allremotes))
         for remote in allremotes:
             proc = remote.run(args=['type', cmd], wait=True,
-                              check_status=False, stdout=StringIO(),
-                              stderr=StringIO())
+                              check_status=False, stdout=BytesIO(),
+                              stderr=BytesIO())
             if proc.exitstatus != 0:
                 return False;
         return True;
@@ -239,8 +240,8 @@ class Thrasher:
             with safe_while(sleep=15, tries=40, action="type ceph-objectstore-tool") as proceed:
                 while proceed():
                     proc = exp_remote.run(args=['type', 'ceph-objectstore-tool'], 
-                               wait=True, check_status=False, stdout=StringIO(),
-                               stderr=StringIO())
+                               wait=True, check_status=False, stdout=BytesIO(),
+                               stderr=BytesIO())
                     if proc.exitstatus == 0:
                         break
                     log.debug("ceph-objectstore-tool binary not present, trying again")
@@ -1071,7 +1072,7 @@ class ObjectStoreTool:
 
     def run(self, options, args, stdin=None, stdout=None):
         if stdout is None:
-            stdout = StringIO()
+            stdout = BytesIO()
         self.manager.kill_osd(self.osd)
         cmd = self.build_cmd(options, args, stdin)
         self.manager.log(cmd)
@@ -1079,7 +1080,7 @@ class ObjectStoreTool:
             proc = self.remote.run(args=['bash', '-e', '-x', '-c', cmd],
                                    check_status=False,
                                    stdout=stdout,
-                                   stderr=StringIO())
+                                   stderr=BytesIO())
             proc.wait()
             if proc.exitstatus != 0:
                 self.manager.log("failed with " + str(proc.exitstatus))
@@ -1178,7 +1179,7 @@ class CephManager:
 
     def run_ceph_w(self, watch_channel=None):
         """
-        Execute "ceph -w" in the background with stdout connected to a StringIO,
+        Execute "ceph -w" in the background with stdout connected to a BytestIO,
         and return the RemoteProcess.
 
         :param watch_channel: Specifies the channel to be watched. This can be

@@ -1,5 +1,4 @@
 
-from io import StringIO
 import json
 import logging
 from gevent import Greenlet
@@ -941,11 +940,9 @@ class Filesystem(MDSCluster):
             'sudo', os.path.join(self._prefix, 'rados'), '-p', self.metadata_pool_name, 'get', object_id, temp_bin_path
         ])
 
-        stdout = StringIO()
-        self.client_remote.run(args=[
+        dump_json = self.client_remote.sh([
             'sudo', os.path.join(self._prefix, 'ceph-dencoder'), 'type', object_type, 'import', temp_bin_path, 'decode', 'dump_json'
-        ], stdout=stdout)
-        dump_json = stdout.getvalue().strip()
+        ]).strip()
         try:
             dump = json.loads(dump_json)
         except (TypeError, ValueError):
@@ -1104,9 +1101,7 @@ class Filesystem(MDSCluster):
             os.path.join(self._prefix, "rados"), "-p", pool, "setxattr",
             obj_name, xattr_name, data
         ]
-        remote.run(
-            args=args,
-            stdout=StringIO())
+        remote.sh(args)
 
     def read_backtrace(self, ino_no, pool=None):
         """
@@ -1229,11 +1224,8 @@ class Filesystem(MDSCluster):
         if stdin_file is not None:
             args = ["bash", "-c", "cat " + stdin_file + " | " + " ".join(args)]
 
-        p = remote.run(
-            args=args,
-            stdin=stdin_data,
-            stdout=StringIO())
-        return p.stdout.getvalue().strip()
+        output = remote.sh(args, stdin=stdin_data)
+        return output.strip()
 
     def list_dirfrag(self, dir_ino):
         """
@@ -1310,9 +1302,7 @@ class Filesystem(MDSCluster):
             base_args.extend(["--rank", "%s" % str(rank)])
 
         t1 = datetime.datetime.now()
-        r = self.tool_remote.run(
-            args=base_args + args,
-            stdout=StringIO()).stdout.getvalue().strip()
+        r = self.tool_remote.sh(base_args + args).strip()
         duration = datetime.datetime.now() - t1
         log.info("Ran {0} in time {1}, result:\n{2}".format(
             base_args + args, duration, r
