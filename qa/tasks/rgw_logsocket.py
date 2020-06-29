@@ -1,11 +1,11 @@
 """
 rgw s3tests logging wrappers
 """
-from io import StringIO
+from io import BytesIO
 from configobj import ConfigObj
 import contextlib
 import logging
-from . import s3tests
+from tasks import s3tests
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -68,7 +68,7 @@ def run_tests(ctx, config):
 
     s3tests.run_tests(ctx, config)
 
-    netcat_out = StringIO()
+    netcat_out = BytesIO()
 
     for client, client_config in config.items():
         ctx.cluster.only(client).run(
@@ -122,7 +122,7 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = list(config.keys())
+    clients = config.keys()
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.

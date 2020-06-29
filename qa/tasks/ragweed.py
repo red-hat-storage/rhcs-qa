@@ -1,16 +1,15 @@
 """
 Run a set of s3 tests on rgw.
 """
-from io import StringIO
+from io import BytesIO
 from configobj import ConfigObj
 import base64
 import contextlib
 import logging
 import os
 import random
+import six
 import string
-
-from . import util.rgw as rgw_utils
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -33,7 +32,7 @@ def download(ctx, config):
     log.info('Downloading ragweed...')
     testdir = teuthology.get_testdir(ctx)
     s3_branches = [ 'master', 'nautilus', 'mimic', 'luminous', 'kraken', 'jewel' ]
-    for (client, cconf) in list(config.items()):
+    for (client, cconf) in config.items():
         default_branch = ''
         branch = cconf.get('force-branch', None)
         if not branch:
@@ -43,7 +42,7 @@ def download(ctx, config):
             ragweed_repo = ctx.config.get('ragweed_repo', teuth_config.ceph_git_base_url + 'ragweed.git')
             if suite_branch in s3_branches:
                 branch = cconf.get('branch', 'ceph-' + suite_branch)
-	    else:
+            else:
                 branch = cconf.get('branch', suite_branch)
         if not branch:
             raise ValueError(
@@ -103,8 +102,8 @@ def _config_user(ragweed_conf, section, user):
     ragweed_conf[section].setdefault('user_id', user)
     ragweed_conf[section].setdefault('email', '{user}+test@test.test'.format(user=user))
     ragweed_conf[section].setdefault('display_name', 'Mr. {user}'.format(user=user))
-    ragweed_conf[section].setdefault('access_key', ''.join(random.choice(string.uppercase) for i in range(20)))
-    ragweed_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)))
+    ragweed_conf[section].setdefault('access_key', ''.join(random.choice(string.ascii_uppercase) for i in range(20)))
+    ragweed_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)).decode('ascii'))
 
 
 @contextlib.contextmanager
@@ -115,7 +114,7 @@ def create_users(ctx, config, run_stages):
     assert isinstance(config, dict)
 
     for client, properties in config['config'].items():
-        run_stages[client] = string.split(properties.get('stages', 'prepare,check'), ',')
+        run_stages[client] = properties.get('stages', 'prepare,check').split(',')
 
     log.info('Creating rgw users...')
     testdir = teuthology.get_testdir(ctx)
@@ -184,7 +183,7 @@ def configure(ctx, config, run_stages):
     log.info('Configuring ragweed...')
     testdir = teuthology.get_testdir(ctx)
     for client, properties in config['clients'].items():
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         remote.run(
             args=[
                 'cd',
@@ -202,7 +201,7 @@ def configure(ctx, config, run_stages):
         ragweed_conf = config['ragweed_conf'][client]
         if properties is not None and 'rgw_server' in properties:
             host = None
-            for target, roles in zip(iter(ctx.config['targets'].keys()), ctx.config['roles']):
+            for target, roles in zip(ctx.config['targets'].keys(), ctx.config['roles']):
                 log.info('roles: ' + str(roles))
                 log.info('target: ' + str(target))
                 if properties['rgw_server'] in roles:
@@ -213,9 +212,9 @@ def configure(ctx, config, run_stages):
             ragweed_conf['rgw']['host'] = 'localhost'
 
         if properties is not None and 'slow_backend' in properties:
-	    ragweed_conf['fixtures']['slow backend'] = properties['slow_backend']
+            ragweed_conf['fixtures']['slow backend'] = properties['slow_backend']
 
-        conf_fp = StringIO()
+        conf_fp = BytesIO()
         ragweed_conf.write(conf_fp)
         teuthology.write_file(
             remote=remote,
@@ -226,8 +225,8 @@ def configure(ctx, config, run_stages):
     log.info('Configuring boto...')
     boto_src = os.path.join(os.path.dirname(__file__), 'boto.cfg.template')
     for client, properties in config['clients'].items():
-        with file(boto_src, 'rb') as f:
-            (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        with open(boto_src, 'r') as f:
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             conf = f.read().format(
                 idle_timeout=config.get('idle_timeout', 30)
                 )
@@ -243,7 +242,7 @@ def configure(ctx, config, run_stages):
     finally:
         log.info('Cleaning up boto...')
         for client, properties in config['clients'].items():
-            (remote,) = list(ctx.cluster.only(client).remotes.keys())
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             remote.run(
                 args=[
                     'rm',
@@ -263,7 +262,7 @@ def run_tests(ctx, config, run_stages):
     testdir = teuthology.get_testdir(ctx)
     attrs = ["!fails_on_rgw"]
     for client, client_config in config.items():
-        stages = string.join(run_stages[client], ',')
+        stages = ','.join(run_stages[client])
         args = [
             'RAGWEED_CONF={tdir}/archive/ragweed.{client}.conf'.format(tdir=testdir, client=client),
             'RAGWEED_STAGES={stages}'.format(stages=stages),
@@ -334,7 +333,7 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = list(config.keys())
+    clients = config.keys()
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.

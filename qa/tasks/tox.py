@@ -3,7 +3,6 @@ import contextlib
 import logging
 
 from teuthology import misc as teuthology
-from teuthology import contextutil
 from teuthology.orchestra import run
 
 log = logging.getLogger(__name__)
@@ -28,15 +27,15 @@ def task(ctx, config):
         config = dict.fromkeys(config)
 
     log.info('Deploying tox from pip...')
-    for (client, _) in list(config.items()):
+    for (client, _) in config.items():
         # yup, we have to deploy tox first. The packaged one, available
 	# on Sepia's Ubuntu machines, is outdated for Keystone/Tempest.
         tvdir = get_toxvenv_dir(ctx)
-        ctx.cluster.only(client).run(args=[ 'virtualenv', tvdir ])
+        ctx.cluster.only(client).run(args=[ 'virtualenv', '-p', 'python3', tvdir ])
         ctx.cluster.only(client).run(args=
             [   'source', '{tvdir}/bin/activate'.format(tvdir=tvdir),
                 run.Raw('&&'),
-                'pip', 'install', 'tox==2.3.1'
+                'pip', 'install', 'tox==3.15.0'
             ])
 
     # export the path Keystone and Tempest
@@ -46,6 +45,6 @@ def task(ctx, config):
     try:
         yield
     finally:
-        for (client, _) in list(config.items()):
+        for (client, _) in config.items():
             ctx.cluster.only(client).run(
                 args=[ 'rm', '-rf', get_toxvenv_dir(ctx) ])

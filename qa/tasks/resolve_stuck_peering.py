@@ -5,7 +5,7 @@ import logging
 import time
 
 from teuthology import misc as teuthology
-from .util.rados import rados
+from tasks.util.rados import rados
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def task(ctx, config):
 
     log.info('writing initial objects')
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
     #create few objects
     for i in range(100):
         rados(ctx, mon, ['-p', 'foo', 'put', 'existing_%d' % i, dummyfile])

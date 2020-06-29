@@ -7,7 +7,7 @@ import logging
 import random
 import time
 
-from tasks import ceph_manager
+import tasks.ceph_manager
 from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def task(ctx, config):
     log.info('Beginning scrub...')
 
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
 
     manager = ceph_manager.CephManager(
         mon,

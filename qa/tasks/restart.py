@@ -98,7 +98,7 @@ def task(ctx, config):
         assert 'exec' in config, "config requires exec key with <role>: <command> entries"
         for role, task in config['exec'].items():
             log.info('restart for role {r}'.format(r=role))
-            (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             srcdir, restarts = get_tests(ctx, config, role, remote, testdir)
             log.info('Running command on role %s host %s', role, remote.name)
             spec = '{spec}'.format(spec=task[0])

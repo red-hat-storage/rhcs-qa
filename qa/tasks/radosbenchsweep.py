@@ -5,11 +5,13 @@ import contextlib
 import logging
 import re
 
-from io import StringIO
+from io import BytesIO
 from itertools import product
 
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
+
+import six
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +75,7 @@ def task(ctx, config):
         raise Exception('min_num_osds cannot be less than 1')
     if min_num_osds > max_num_osds:
         raise Exception('min_num_osds cannot be greater than max_num_osd')
-    osds = list(range(0, (total_osds_in_cluster + 1)))
+    osds = range(0, (total_osds_in_cluster + 1))
 
     # replicas
     min_num_replicas = config.get('min_num_replicas', 3)
@@ -85,13 +87,13 @@ def task(ctx, config):
         raise Exception('min_num_replicas cannot be greater than max_replicas')
     if max_num_replicas > max_num_osds:
         raise Exception('max_num_replicas cannot be greater than max_num_osds')
-    replicas = list(range(min_num_replicas, (max_num_replicas + 1)))
+    replicas = range(min_num_replicas, (max_num_replicas + 1))
 
     # object size
     sizes = config.get('size', [4 << 20])
 
     # repetitions
-    reps = list(range(config.get('repetitions', 1)))
+    reps = range(config.get('repetitions', 1))
 
     # file
     fname = config.get('file', 'radosbench.csv')
@@ -122,7 +124,7 @@ def task(ctx, config):
             wait_until_healthy(ctx, config)
             current_osds_out = osds_out
 
-        if osds_in not in list(range(min_num_osds, (max_num_osds + 1))):
+        if osds_in not in range(min_num_osds, (max_num_osds + 1)):
             # no need to execute with a number of osds that wasn't requested
             continue
 
@@ -167,11 +169,11 @@ def run_radosbench(ctx, config, f, num_osds, size, replica, rep):
     log.info('  repetition =' + str(rep))
 
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, str)
+        assert isinstance(role, six.string_types)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
 
         proc = remote.run(
             args=[
@@ -187,7 +189,7 @@ def run_radosbench(ctx, config, f, num_osds, size, replica, rep):
             ],
             logger=log.getChild('radosbench.{id}'.format(id=id_)),
             stdin=run.PIPE,
-            stdout=StringIO(),
+            stdout=BytesIO(),
             wait=False
         )
 
@@ -217,5 +219,5 @@ def run_radosbench(ctx, config, f, num_osds, size, replica, rep):
 
 def wait_until_healthy(ctx, config):
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon_remote,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon_remote,) = ctx.cluster.only(first_mon).remotes.keys()
     teuthology.wait_until_healthy(ctx, mon_remote)

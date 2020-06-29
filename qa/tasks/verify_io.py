@@ -18,7 +18,7 @@ def test_exec(ctx, config, client):
         client.run(
             args=[
                 run.Raw(
-                    'sudo venv/bin/python2.7 rgw-tests/ceph-qe-scripts/rgw/v1/lib/%s '
+                    'sudo venv/bin/python3 rgw-tests/ceph-qe-scripts/rgw/v1/lib/%s '
                     % script_name)])
 
     elif ctx.multisite_test.version == 'v2':
@@ -26,7 +26,7 @@ def test_exec(ctx, config, client):
         client.run(
             args=[
                 run.Raw(
-                    'sudo venv/bin/python2.7 rgw-tests/ceph-qe-scripts/rgw/v2/lib/%s '
+                    'sudo venv/bin/python3 rgw-tests/ceph-qe-scripts/rgw/v2/lib/%s '
                     % script_name)])
 
 

@@ -298,10 +298,10 @@ def task(ctx, config):
     config = ctx.rgw.config
     log.debug('config is: %r', config)
 
-    clients_from_config = list(config.keys())
+    clients_from_config = config.keys()
 
     # choose first client as default
-    client = clients_from_config[0]
+    client = next(iter(clients_from_config))
 
     # once the client is chosen, pull the host name and  assigned port out of
     # the role_endpoints that were assigned by the rgw task

@@ -6,8 +6,10 @@ import pipes
 import os
 import re
 
-from .util import get_remote_for_role
-from .util.workunit import get_refspec_after_overrides
+import six
+
+from tasks.util import get_remote_for_role
+from tasks.util.workunit import get_refspec_after_overrides
 
 from teuthology import misc
 from teuthology.config import config as teuth_config
@@ -103,7 +105,7 @@ def task(ctx, config):
     # Create scratch dirs for any non-all workunits
     log.info('Making a separate scratch dir for every client...')
     for role in clients.keys():
-        assert isinstance(role, str)
+        assert isinstance(role, six.string_types)
         if role == "all":
             continue
 
@@ -124,7 +126,7 @@ def task(ctx, config):
 
     if cleanup:
         # Clean up dirs from any non-all workunits
-        for role, created in list(created_mountpoint.items()):
+        for role, created in created_mountpoint.items():
             _delete_dir(ctx, role, created)
 
     # Execute any 'all' workunits
@@ -271,7 +273,7 @@ def _spawn_on_all_clients(ctx, refspec, tests, env, basedir, subdir, timeout=Non
     is_client = misc.is_type('client')
     client_remotes = {}
     created_mountpoint = {}
-    for remote, roles_for_host in list(ctx.cluster.remotes.items()):
+    for remote, roles_for_host in ctx.cluster.remotes.items():
         for role in roles_for_host:
             if is_client(role):
                 client_remotes[role] = remote
@@ -279,7 +281,7 @@ def _spawn_on_all_clients(ctx, refspec, tests, env, basedir, subdir, timeout=Non
 
     for unit in tests:
         with parallel() as p:
-            for role, remote in list(client_remotes.items()):
+            for role, remote in client_remotes.items():
                 p.spawn(_run_tests, ctx, refspec, role, [unit], env,
                         basedir,
                         subdir,
@@ -287,7 +289,7 @@ def _spawn_on_all_clients(ctx, refspec, tests, env, basedir, subdir, timeout=Non
 
     # cleanup the generated client directories
     if cleanup:
-        for role, _ in list(client_remotes.items()):
+        for role, _ in client_remotes.items():
             _delete_dir(ctx, role, created_mountpoint[role])
 
 
@@ -311,7 +313,7 @@ def _run_tests(ctx, refspec, role, tests, env, basedir,
                     to False is passed, the 'timeout' command is not used.
     """
     testdir = misc.get_testdir(ctx)
-    assert isinstance(role, str)
+    assert isinstance(role, six.string_types)
     cluster, type_, id_ = misc.split_role(role)
     assert type_ == 'client'
     remote = get_remote_for_role(ctx, role)
@@ -359,7 +361,7 @@ def _run_tests(ctx, refspec, role, tests, env, basedir,
     )
 
     workunits_file = '{tdir}/workunits.list.{role}'.format(tdir=testdir, role=role)
-    workunits = sorted(misc.get_file(remote, workunits_file).split('\0'))
+    workunits = sorted(six.ensure_str(misc.get_file(remote, workunits_file)).split('\0'))
     assert workunits
 
     try:
