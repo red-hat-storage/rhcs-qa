@@ -1,4 +1,4 @@
-""" 
+"""
 Run an autotest test on the ceph cluster.
 """
 import json
@@ -12,6 +12,7 @@ from teuthology.parallel import parallel
 from teuthology.orchestra import run
 
 log = logging.getLogger(__name__)
+
 
 def task(ctx, config):
     """
@@ -45,7 +46,7 @@ def task(ctx, config):
     testdir = teuthology.get_testdir(ctx)
     with parallel() as p:
         for role in config.keys():
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             p.spawn(_download, testdir, remote)
 
     log.info('Making a separate scratch dir for every client...')
@@ -54,7 +55,7 @@ def task(ctx, config):
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
         mnt = os.path.join(testdir, 'mnt.{id}'.format(id=id_))
         scratch = os.path.join(mnt, 'client.{id}'.format(id=id_))
         remote.run(
@@ -71,8 +72,9 @@ def task(ctx, config):
 
     with parallel() as p:
         for role, tests in config.items():
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             p.spawn(_run_tests, testdir, remote, role, tests)
+
 
 def _download(testdir, remote):
     """
@@ -100,6 +102,7 @@ def _download(testdir, remote):
             '--strip-components=1',
             ],
         )
+
 
 def _run_tests(testdir, remote, role, tests):
     """

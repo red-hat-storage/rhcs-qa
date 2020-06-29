@@ -28,11 +28,11 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = list(config.keys())
+    clients = config.keys()
 
     # just use the first client...
-    client = clients[0];
-    (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+    client = next(iter(clients))
+    (remote,) = ctx.cluster.only(client).remotes.keys()
 
     testdir = teuthology.get_testdir(ctx)
 

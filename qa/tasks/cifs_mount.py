@@ -59,7 +59,7 @@ def task(ctx, config):
     elif isinstance(config, list):
         config = dict((name, None) for name in config)
 
-    clients = list(teuthology.get_clients(ctx=ctx, roles=list(config.keys())))
+    clients = list(teuthology.get_clients(ctx=ctx, roles=config.keys()))
 
     from .samba import get_sambas
     samba_roles = ['samba.{id_}'.format(id_=id_) for id_ in teuthology.all_roles_of_type(ctx.cluster, 'samba')]

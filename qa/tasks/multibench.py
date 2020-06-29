@@ -3,10 +3,11 @@ Multibench testing
 """
 import contextlib
 import logging
-from . import radosbench
 import time
 import copy
 import gevent
+
+from tasks import radosbench
 
 log = logging.getLogger(__name__)
 

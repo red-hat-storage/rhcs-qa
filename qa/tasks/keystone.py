@@ -8,7 +8,6 @@ import logging
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.orchestra import run
-from teuthology.orchestra.connection import split_user
 from teuthology.packaging import install_package
 from teuthology.packaging import remove_package
 
@@ -80,7 +79,7 @@ def download(ctx, config):
     log.info('Downloading keystone...')
     keystonedir = get_keystone_dir(ctx)
 
-    for (client, cconf) in list(config.items()):
+    for (client, cconf) in config.items():
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
@@ -120,10 +119,10 @@ def setup_venv(ctx, config):
     """
     assert isinstance(config, dict)
     log.info('Setting up virtualenv for keystone...')
-    for (client, _) in list(config.items()):
+    for (client, _) in config.items():
         run_in_keystone_dir(ctx, client,
             [   'source',
-		'{tvdir}/bin/activate'.format(tvdir=get_toxvenv_dir(ctx)),
+                '{tvdir}/bin/activate'.format(tvdir=get_toxvenv_dir(ctx)),
                 run.Raw('&&'),
                 'tox', '-e', 'venv', '--notest'
             ])
@@ -133,7 +132,7 @@ def setup_venv(ctx, config):
     try:
         yield
     finally:
-	pass
+        pass
 
 @contextlib.contextmanager
 def configure_instance(ctx, config):
@@ -141,7 +140,7 @@ def configure_instance(ctx, config):
     log.info('Configuring keystone...')
 
     keyrepo_dir = '{kdir}/etc/fernet-keys'.format(kdir=get_keystone_dir(ctx))
-    for (client, _) in list(config.items()):
+    for (client, _) in config.items():
         # prepare the config file
         run_in_keystone_dir(ctx, client,
             [
@@ -175,8 +174,8 @@ def run_keystone(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring keystone...')
 
-    for (client, _) in list(config.items()):
-        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+    for (client, _) in config.items():
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         cluster_name, _, client_id = teuthology.split_role(client)
 
         # start the public endpoint
@@ -284,7 +283,7 @@ def create_endpoint(ctx, cclient, service, url):
 def fill_keystone(ctx, config):
     assert isinstance(config, dict)
 
-    for (cclient, cconfig) in list(config.items()):
+    for (cclient, cconfig) in config.items():
         # configure tenants/projects
         run_section_cmds(ctx, cclient, 'project create', 'name',
                          cconfig['tenants'])
