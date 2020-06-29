@@ -7,17 +7,16 @@ import json
 import logging
 import os
 import errno
-from . import util.rgw as rgw_utils
 
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.exceptions import ConfigError
-from .util import get_remote_for_role
-from .util.rgw import rgwadmin, wait_for_radosgw
-from .util.rados import (rados, create_ec_pool,
-                                        create_replicated_pool,
-                                        create_cache_pool)
+from tasks.util import get_remote_for_role
+from tasks.util.rgw import rgwadmin, wait_for_radosgw
+from tasks.util.rados import (create_ec_pool,
+                              create_replicated_pool,
+                              create_cache_pool)
 
 log = logging.getLogger(__name__)
 
