@@ -3,9 +3,10 @@ test_stress_watch task
 """
 import contextlib
 import logging
-import proc_thrasher
 
+import six
 from teuthology.orchestra import run
+from teuthology.task import proc_thrasher
 
 log = logging.getLogger(__name__)
 
@@ -36,11 +37,11 @@ def task(ctx, config):
     remotes = []
 
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, str)
+        assert isinstance(role, six.string_types)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
         remotes.append(remote)
 
         args =['CEPH_CLIENT_ID={id_}'.format(id_=id_),

@@ -1,7 +1,6 @@
 """
 Run rgw s3 readwite tests
 """
-from io import StringIO
 import base64
 import contextlib
 import logging
@@ -18,29 +17,32 @@ from teuthology.orchestra.connection import split_user
 
 log = logging.getLogger(__name__)
 
-
 @contextlib.contextmanager
 def download(ctx, config):
     """
     Download the s3 tests from the git builder.
     Remove downloaded s3 file upon exit.
-    
+
     The context passed in should be identical to the context
     passed in to the main task.
     """
     assert isinstance(config, dict)
     log.info('Downloading s3-tests...')
     testdir = teuthology.get_testdir(ctx)
-    for (client, cconf) in list(config.items()):
-        branch = cconf.get('force-branch', None)
-        if not branch:
-            branch = cconf.get('branch', 'master')
-        sha1 = cconf.get('sha1')
+    for (client, client_config) in config.items():
+        s3tests_branch = client_config.get('force-branch', None)
+        if not s3tests_branch:
+            raise ValueError(
+                "Could not determine what branch to use for s3-tests. Please add 'force-branch: {s3-tests branch name}' to the .yaml config for this s3readwrite task.")
+
+        log.info("Using branch '%s' for s3tests", s3tests_branch)
+        sha1 = client_config.get('sha1')
+        git_remote = client_config.get('git_remote', teuth_config.ceph_git_base_url)
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
-                '-b', branch,
-                teuth_config.ceph_git_base_url + 's3-tests.git',
+                '-b', s3tests_branch,
+                git_remote + 's3-tests.git',
                 '{tdir}/s3-tests'.format(tdir=testdir),
                 ],
             )
@@ -75,8 +77,8 @@ def _config_user(s3tests_conf, section, user):
     s3tests_conf[section].setdefault('user_id', user)
     s3tests_conf[section].setdefault('email', '{user}+test@test.test'.format(user=user))
     s3tests_conf[section].setdefault('display_name', 'Mr. {user}'.format(user=user))
-    s3tests_conf[section].setdefault('access_key', ''.join(random.choice(string.uppercase) for i in range(20)))
-    s3tests_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)))
+    s3tests_conf[section].setdefault('access_key', ''.join(random.choice(string.ascii_uppercase) for i in range(20)))
+    s3tests_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)).decode('ascii'))
 
 @contextlib.contextmanager
 def create_users(ctx, config):
@@ -168,7 +170,7 @@ def configure(ctx, config):
         s3tests_conf = config['s3tests_conf'][client]
         if properties is not None and 'rgw_server' in properties:
             host = None
-            for target, roles in zip(iter(ctx.config['targets'].keys()), ctx.config['roles']):
+            for target, roles in zip(ctx.config['targets'].keys(), ctx.config['roles']):
                 log.info('roles: ' + str(roles))
                 log.info('target: ' + str(target))
                 if properties['rgw_server'] in roles:
@@ -182,7 +184,7 @@ def configure(ctx, config):
         s3tests_conf['s3'].setdefault('port', def_conf['port'])
         s3tests_conf['s3'].setdefault('is_secure', def_conf['is_secure'])
 
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         remote.run(
             args=[
                 'cd',
@@ -191,16 +193,14 @@ def configure(ctx, config):
                 './bootstrap',
                 ],
             )
-        conf_fp = StringIO()
         conf = dict(
                         s3=s3tests_conf['s3'],
                         readwrite=s3tests_conf['readwrite'],
                     )
-        yaml.safe_dump(conf, conf_fp, default_flow_style=False)
         teuthology.write_file(
             remote=remote,
             path='{tdir}/archive/s3readwrite.{client}.config.yaml'.format(tdir=teuthology.get_testdir(ctx), client=client),
-            data=conf_fp.getvalue(),
+            data=yaml.safe_dump(conf, default_flow_style=False),
             )
     yield
 
@@ -216,7 +216,7 @@ def run_tests(ctx, config):
     assert isinstance(config, dict)
     testdir = teuthology.get_testdir(ctx)
     for client, client_config in config.items():
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         conf = teuthology.get_file(remote, '{tdir}/archive/s3readwrite.{client}.config.yaml'.format(tdir=testdir, client=client))
         args = [
                 '{tdir}/s3-tests/virtualenv/bin/s3tests-test-readwrite'.format(tdir=testdir),
@@ -242,6 +242,7 @@ def task(ctx, config):
         - ceph:
         - rgw:
         - s3readwrite:
+            force-branch: ceph-nautilus
 
     To restrict testing to particular clients::
 
@@ -257,6 +258,7 @@ def task(ctx, config):
         - rgw: [client.1]
         - s3readwrite:
             client.0:
+              force-branch: ceph-nautilus
               rgw_server: client.1
 
     To pass extra test arguments
@@ -266,6 +268,7 @@ def task(ctx, config):
         - rgw: [client.0]
         - s3readwrite:
             client.0:
+              force-branch: ceph-nautilus
               readwrite:
                 bucket: mybucket
                 readers: 10
@@ -285,6 +288,7 @@ def task(ctx, config):
         - rgw: [client.0]
         - s3readwrite:
             client.0:
+              force-branch: ceph-nautilus
               s3:
                 user_id: myuserid
                 display_name: myname
@@ -303,7 +307,7 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = list(config.keys())
+    clients = config.keys()
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.

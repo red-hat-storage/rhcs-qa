@@ -160,7 +160,7 @@ def task(ctx, config):
     The iscsi administration is handled by the iscsi task.
     """
     if config:
-        config = {key : val for key, val in list(config.items())
+        config = {key : val for key, val in config.items()
                 if key.startswith('client')}
     # config at this point should only contain keys starting with 'client'
     start_tgtd = []

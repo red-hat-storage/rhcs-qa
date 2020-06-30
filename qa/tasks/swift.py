@@ -1,7 +1,7 @@
 """
 Test Swift API
 """
-from io import StringIO
+from io import BytesIO
 from configobj import ConfigObj
 import base64
 import contextlib
@@ -13,7 +13,6 @@ from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.config import config as teuth_config
 from teuthology.orchestra import run
-from teuthology.orchestra.connection import split_user
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ def download(ctx, config):
     testdir = teuthology.get_testdir(ctx)
     assert isinstance(config, dict)
     log.info('Downloading swift...')
-    for (client, cconf) in list(config.items()):
+    for (client, cconf) in config.items():
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
@@ -40,7 +39,7 @@ def download(ctx, config):
     finally:
         log.info('Removing swift...')
         testdir = teuthology.get_testdir(ctx)
-        for (client, _) in list(config.items()):
+        for (client, _) in config.items():
             ctx.cluster.only(client).run(
                 args=[
                     'rm',
@@ -61,7 +60,7 @@ def _config_user(testswift_conf, account, user, suffix):
     testswift_conf['func_test'].setdefault('username{s}'.format(s=suffix), user)
     testswift_conf['func_test'].setdefault('email{s}'.format(s=suffix), '{account}+test@test.test'.format(account=account))
     testswift_conf['func_test'].setdefault('display_name{s}'.format(s=suffix), 'Mr. {account} {user}'.format(account=account, user=user))
-    testswift_conf['func_test'].setdefault('password{s}'.format(s=suffix), base64.b64encode(os.urandom(40)))
+    testswift_conf['func_test'].setdefault('password{s}'.format(s=suffix), base64.b64encode(os.urandom(40)).decode('ascii'))
 
 @contextlib.contextmanager
 def create_users(ctx, config):
@@ -123,7 +122,7 @@ def configure(ctx, config):
     log.info('Configuring testswift...')
     testdir = teuthology.get_testdir(ctx)
     for client, testswift_conf in config.items():
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         remote.run(
             args=[
                 'cd',
@@ -132,7 +131,7 @@ def configure(ctx, config):
                 './bootstrap',
                 ],
             )
-        conf_fp = StringIO()
+        conf_fp = BytesIO()
         testswift_conf.write(conf_fp)
         teuthology.write_file(
             remote=remote,
@@ -220,7 +219,7 @@ def task(ctx, config):
     clients = []
     for client, client_config in config.items():
         # http://tracker.ceph.com/issues/40304 can't bootstrap on rhel 7.6+
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         if remote.os.name == 'rhel' and LooseVersion(remote.os.version) >= LooseVersion('7.6'):
             log.warning('Swift tests cannot run on rhel 7.6+, skipping client {}'.format(client))
             continue
@@ -246,7 +245,7 @@ def task(ctx, config):
     # only take config for valid clients
     config = {c: config[c] for c in clients}
 
-    log.info('clients={c}'.format(c=list(config.keys())))
+    log.info('clients={c}'.format(c=config.keys()))
     with contextutil.nested(
         lambda: download(ctx=ctx, config=config),
         lambda: create_users(ctx=ctx, config=testswift_conf),

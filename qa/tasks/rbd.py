@@ -7,7 +7,7 @@ import os
 import tempfile
 import sys
 
-from io import StringIO
+from io import BytesIO
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -15,6 +15,8 @@ from teuthology.parallel import parallel
 from teuthology.task.common_fs_utils import generic_mkfs
 from teuthology.task.common_fs_utils import generic_mount
 from teuthology.task.common_fs_utils import default_image_name
+
+import six
 
 #V1 image unsupported but required for testing purposes
 os.environ["RBD_FORCE_ALLOW_V1"] = "1"
@@ -47,7 +49,7 @@ def create_image(ctx, config):
         "task create_image only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        images = list(config.items())
+        images = config.items()
     else:
         images = [(role, None) for role in config]
 
@@ -58,7 +60,7 @@ def create_image(ctx, config):
         name = properties.get('image_name', default_image_name(role))
         size = properties.get('image_size', 10240)
         fmt = properties.get('image_format', 1)
-        (remote,) = list(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
         log.info('Creating image {name} with size {size}'.format(name=name,
                                                                  size=size))
         args = [
@@ -84,7 +86,7 @@ def create_image(ctx, config):
             if properties is None:
                 properties = {}
             name = properties.get('image_name', default_image_name(role))
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             remote.run(
                 args=[
                     'adjust-ulimits',
@@ -115,7 +117,7 @@ def clone_image(ctx, config):
         "task clone_image only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        images = list(config.items())
+        images = config.items()
     else:
         images = [(role, None) for role in config]
 
@@ -130,7 +132,7 @@ def clone_image(ctx, config):
             "parent_name is required"
         parent_spec = '{name}@{snap}'.format(name=parent_name, snap=name)
 
-        (remote,) = list(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
         log.info('Clone image {parent} to {child}'.format(parent=parent_name,
                                                           child=name))
         for cmd in [('snap', 'create', parent_spec),
@@ -156,7 +158,7 @@ def clone_image(ctx, config):
             parent_name = properties.get('parent_name')
             parent_spec = '{name}@{snap}'.format(name=parent_name, snap=name)
 
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
 
             for cmd in [('rm', name),
                         ('snap', 'unprotect', parent_spec),
@@ -184,7 +186,7 @@ def modprobe(ctx, config):
     """
     log.info('Loading rbd kernel module...')
     for role in config:
-        (remote,) = list(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
         remote.run(
             args=[
                 'sudo',
@@ -197,7 +199,7 @@ def modprobe(ctx, config):
     finally:
         log.info('Unloading rbd kernel module...')
         for role in config:
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             remote.run(
                 args=[
                     'sudo',
@@ -231,7 +233,7 @@ def dev_create(ctx, config):
         "task dev_create only supports a list or dictionary for configuration"
 
     if isinstance(config, dict):
-        role_images = list(config.items())
+        role_images = config.items()
     else:
         role_images = [(role, None) for role in config]
 
@@ -242,7 +244,7 @@ def dev_create(ctx, config):
     for role, image in role_images:
         if image is None:
             image = default_image_name(role)
-        (remote,) = list(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
 
         remote.run(
             args=[
@@ -269,7 +271,7 @@ def dev_create(ctx, config):
         for role, image in role_images:
             if image is None:
                 image = default_image_name(role)
-            (remote,) = list(ctx.cluster.only(role).remotes.keys())
+            (remote,) = ctx.cluster.only(role).remotes.keys()
             remote.run(
                 args=[
                     'LD_LIBRARY_PATH={tdir}/binary/usr/local/lib'.format(tdir=testdir),
@@ -301,12 +303,12 @@ def canonical_path(ctx, role, path):
     representing the given role.  A canonical path contains no
     . or .. components, and includes no symbolic links.
     """
-    version_fp = StringIO()
+    version_fp = BytesIO()
     ctx.cluster.only(role).run(
         args=[ 'readlink', '-f', path ],
         stdout=version_fp,
         )
-    canonical_path = version_fp.getvalue().rstrip('\n')
+    canonical_path = six.ensure_str(version_fp.getvalue()).rstrip('\n')
     version_fp.close()
     return canonical_path
 
@@ -344,18 +346,18 @@ def run_xfstests(ctx, config):
                 randomize: true
     """
     with parallel() as p:
-        for role, properties in list(config.items()):
+        for role, properties in config.items():
             p.spawn(run_xfstests_one_client, ctx, role, properties)
         exc_info = None
         while True:
             try:
-                next(p)
+                p.next()
             except StopIteration:
                 break
             except:
                 exc_info = sys.exc_info()
         if exc_info:
-            raise exc_info[0](exc_info[1]).with_traceback(exc_info[2])
+            six.reraise(exc_info[0], exc_info[1], exc_info[2])
     yield
 
 def run_xfstests_one_client(ctx, role, properties):
@@ -380,7 +382,7 @@ def run_xfstests_one_client(ctx, role, properties):
         exclude_list = properties.get('exclude')
         randomize = properties.get('randomize')
 
-        (remote,) = list(ctx.cluster.only(role).remotes.keys())
+        (remote,) = ctx.cluster.only(role).remotes.keys()
 
         # Fetch the test script
         test_root = teuthology.get_testdir(ctx)
@@ -411,9 +413,10 @@ def run_xfstests_one_client(ctx, role, properties):
         log.info('         randomize: {randomize}'.format(randomize=randomize))
 
         if exclude_list:
-            with tempfile.NamedTemporaryFile(bufsize=0, prefix='exclude') as exclude_file:
+            with tempfile.NamedTemporaryFile(mode='w', prefix='exclude') as exclude_file:
                 for test in exclude_list:
                     exclude_file.write("{}\n".format(test))
+                exclude_file.flush()
                 remote.put_file(exclude_file.name, exclude_file.name)
 
         # Note that the device paths are interpreted using
@@ -482,7 +485,7 @@ def xfstests(ctx, config):
         "task xfstests only supports a list or dictionary for configuration"
     if isinstance(config, dict):
         config = teuthology.replace_all_with_clients(ctx.cluster, config)
-        runs = list(config.items())
+        runs = config.items()
     else:
         runs = [(role, None) for role in config]
 
@@ -490,7 +493,7 @@ def xfstests(ctx, config):
     for role, properties in runs:
         assert role.startswith('client.'), \
             "task xfstests can only run on client nodes"
-        for host, roles_for_host in list(ctx.cluster.remotes.items()):
+        for host, roles_for_host in ctx.cluster.remotes.items():
             if role in roles_for_host:
                 assert host not in running_xfstests, \
                     "task xfstests allows only one instance at a time per host"

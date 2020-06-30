@@ -3,7 +3,7 @@ Thrash -- Simulate random osd failures.
 """
 import contextlib
 import logging
-from . import ceph_manager
+from tasks import ceph_manager
 from teuthology import misc as teuthology
 
 
@@ -173,15 +173,15 @@ def task(ctx, config):
         ctx.cluster.run(args=['sync'])
 
         if 'ipmi_user' in ctx.teuthology_config:
-            for remote in list(ctx.cluster.remotes.keys()):
+            for remote in ctx.cluster.remotes.keys():
                 log.debug('checking console status of %s' % remote.shortname)
                 if not remote.console.check_status():
-                    log.warn('Failed to get console status for %s',
+                    log.warning('Failed to get console status for %s',
                              remote.shortname)
 
             # check that all osd remotes have a valid console
             osds = ctx.cluster.only(teuthology.is_type('osd', cluster))
-            for remote in list(osds.remotes.keys()):
+            for remote in osds.remotes.keys():
                 if not remote.console.has_ipmi_credentials:
                     raise Exception(
                         'IPMI console required for powercycling, '

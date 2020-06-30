@@ -1,13 +1,14 @@
 """
 Run a set of s3 tests on rgw.
 """
-from io import StringIO
+from io import BytesIO
 from configobj import ConfigObj
 import base64
 import contextlib
 import logging
 import os
 import random
+import six
 import string
 
 from teuthology import misc as teuthology
@@ -30,27 +31,19 @@ def download(ctx, config):
     assert isinstance(config, dict)
     log.info('Downloading s3-tests...')
     testdir = teuthology.get_testdir(ctx)
-    s3_branches = [ 'giant', 'firefly', 'firefly-original', 'hammer' ]
-    for (client, cconf) in list(config.items()):
-        branch = cconf.get('force-branch', None)
-        if not branch:
-            ceph_branch = ctx.config.get('branch')
-            suite_branch = ctx.config.get('suite_branch', ceph_branch)
-            if suite_branch in s3_branches:
-                branch = cconf.get('branch', suite_branch)
-	    else:
-                branch = cconf.get('branch', 'ceph-' + suite_branch)
-        if not branch:
+    for (client, client_config) in config.items():
+        s3tests_branch = client_config.get('force-branch', None)
+        if not s3tests_branch:
             raise ValueError(
-                "Could not determine what branch to use for s3tests!")
-        else:
-            log.info("Using branch '%s' for s3tests", branch)
-        sha1 = cconf.get('sha1')
-        git_remote = cconf.get('git_remote', None) or teuth_config.ceph_git_base_url
+                "Could not determine what branch to use for s3-tests. Please add 'force-branch: {s3-tests branch name}' to the .yaml config for this s3tests task.")
+
+        log.info("Using branch '%s' for s3tests", s3tests_branch)
+        sha1 = client_config.get('sha1')
+        git_remote = client_config.get('git_remote', teuth_config.ceph_git_base_url)
         ctx.cluster.only(client).run(
             args=[
                 'git', 'clone',
-                '-b', branch,
+                '-b', s3tests_branch,
                 git_remote + 's3-tests.git',
                 '{tdir}/s3-tests'.format(tdir=testdir),
                 ],
@@ -86,10 +79,14 @@ def _config_user(s3tests_conf, section, user):
     s3tests_conf[section].setdefault('user_id', user)
     s3tests_conf[section].setdefault('email', '{user}+test@test.test'.format(user=user))
     s3tests_conf[section].setdefault('display_name', 'Mr. {user}'.format(user=user))
-    s3tests_conf[section].setdefault('access_key', ''.join(random.choice(string.uppercase) for i in range(20)))
-    s3tests_conf[section].setdefault('secret_key', base64.b64encode(os.urandom(40)))
-    s3tests_conf[section].setdefault('totp_serial', ''.join(random.choice(string.digits) for i in range(10)))
-    s3tests_conf[section].setdefault('totp_seed', base64.b32encode(os.urandom(40)))
+    s3tests_conf[section].setdefault('access_key',
+        ''.join(random.choice(string.ascii_uppercase) for i in range(20)))
+    s3tests_conf[section].setdefault('secret_key',
+        six.ensure_str(base64.b64encode(os.urandom(40))))
+    s3tests_conf[section].setdefault('totp_serial',
+        ''.join(random.choice(string.digits) for i in range(10)))
+    s3tests_conf[section].setdefault('totp_seed',
+        six.ensure_str(base64.b32encode(os.urandom(40))))
     s3tests_conf[section].setdefault('totp_seconds', '5')
 
 
@@ -180,7 +177,7 @@ def configure(ctx, config):
         s3tests_conf = config['s3tests_conf'][client]
         if properties is not None and 'rgw_server' in properties:
             host = None
-            for target, roles in zip(iter(ctx.config['targets'].keys()), ctx.config['roles']):
+            for target, roles in zip(ctx.config['targets'].keys(), ctx.config['roles']):
                 log.info('roles: ' + str(roles))
                 log.info('target: ' + str(target))
                 if properties['rgw_server'] in roles:
@@ -191,9 +188,9 @@ def configure(ctx, config):
             s3tests_conf['DEFAULT']['host'] = 'localhost'
 
         if properties is not None and 'slow_backend' in properties:
-	    s3tests_conf['fixtures']['slow backend'] = properties['slow_backend']
+            s3tests_conf['fixtures']['slow backend'] = properties['slow_backend']
 
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         remote.run(
             args=[
                 'cd',
@@ -202,7 +199,7 @@ def configure(ctx, config):
                 './bootstrap',
                 ],
             )
-        conf_fp = StringIO()
+        conf_fp = BytesIO()
         s3tests_conf.write(conf_fp)
         teuthology.write_file(
             remote=remote,
@@ -213,15 +210,15 @@ def configure(ctx, config):
     log.info('Configuring boto...')
     boto_src = os.path.join(os.path.dirname(__file__), 'boto.cfg.template')
     for client, properties in config['clients'].items():
-        with file(boto_src, 'rb') as f:
-            (remote,) = list(ctx.cluster.only(client).remotes.keys())
-            conf = f.read().format(
+        with open(boto_src, 'rb') as f:
+            (remote,) = ctx.cluster.only(client).remotes.keys()
+            conf = six.ensure_str(f.read()).format(
                 idle_timeout=config.get('idle_timeout', 30)
                 )
             teuthology.write_file(
                 remote=remote,
                 path='{tdir}/boto.cfg'.format(tdir=testdir),
-                data=conf,
+                data=six.ensure_binary(conf),
                 )
 
     try:
@@ -230,7 +227,7 @@ def configure(ctx, config):
     finally:
         log.info('Cleaning up boto...')
         for client, properties in config['clients'].items():
-            (remote,) = list(ctx.cluster.only(client).remotes.keys())
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             remote.run(
                 args=[
                     'rm',
@@ -251,7 +248,7 @@ def run_tests(ctx, config):
     # civetweb > 1.8 && beast parsers are strict on rfc2616
     attrs = ["!fails_on_rgw", "!lifecycle_expiration", "!fails_strict_rfc2616"]
     for client, client_config in config.items():
-        (remote,) = list(ctx.cluster.only(client).remotes.keys())
+        (remote,) = ctx.cluster.only(client).remotes.keys()
         args = [
             'S3TEST_CONF={tdir}/archive/s3-tests.{client}.conf'.format(tdir=testdir, client=client),
             'BOTO_CONFIG={tdir}/boto.cfg'.format(tdir=testdir)
@@ -303,7 +300,7 @@ def scan_for_leaked_encryption_keys(ctx, config):
                 continue
             cluster_name, daemon_type, client_id = teuthology.split_role(client)
             client_with_cluster = '.'.join((cluster_name, daemon_type, client_id))
-            (remote,) = list(ctx.cluster.only(client).remotes.keys())
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             proc = remote.run(
                 args=[
                     'grep',
@@ -340,7 +337,9 @@ def task(ctx, config):
         tasks:
         - ceph:
         - rgw: [client.0]
-        - s3tests: [client.0]
+        - s3tests:
+            client.0:
+              force-branch: ceph-nautilus
 
     To run against a server on client.1 and increase the boto timeout to 10m::
 
@@ -349,6 +348,7 @@ def task(ctx, config):
         - rgw: [client.1]
         - s3tests:
             client.0:
+              force-branch: ceph-nautilus
               rgw_server: client.1
               idle_timeout: 600
 
@@ -359,8 +359,10 @@ def task(ctx, config):
         - rgw: [client.0]
         - s3tests:
             client.0:
+              force-branch: ceph-nautilus
               extra_args: ['test_s3:test_object_acl_grand_public_read']
             client.1:
+              force-branch: ceph-nautilus
               extra_args: ['--exclude', 'test_100_continue']
     """
     assert hasattr(ctx, 'rgw'), 's3tests must run after the rgw task'
@@ -373,7 +375,7 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
-    clients = list(config.keys())
+    clients = config.keys()
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.
