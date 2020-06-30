@@ -1,7 +1,6 @@
 """
 Execute ceph-deploy as a task
 """
-from io import StringIO
 
 import contextlib
 import os
@@ -29,7 +28,7 @@ def download_ceph_deploy(ctx, config):
     obtained from `python_version`, if specified.
     """
     # use mon.a for ceph_admin
-    (ceph_admin,) = iter(ctx.cluster.only('mon.a').remotes.keys())
+    (ceph_admin,) = ctx.cluster.only('mon.a').remotes.keys()
 
     try:
         py_ver = str(config['python_version'])
@@ -98,7 +97,7 @@ def is_healthy(ctx, config):
     """Wait until a Ceph cluster is healthy."""
     testdir = teuthology.get_testdir(ctx)
     ceph_admin = teuthology.get_first_mon(ctx, config)
-    (remote,) = list(ctx.cluster.only(ceph_admin).remotes.keys())
+    (remote,) = ctx.cluster.only(ceph_admin).remotes.keys()
     max_tries = 90  # 90 tries * 10 secs --> 15 minutes
     tries = 0
     while True:
@@ -116,18 +115,16 @@ def is_healthy(ctx, config):
             )
             raise RuntimeError(msg)
 
-        r = remote.run(
-            args=[
+        out = remote.sh(
+            [
                 'cd',
                 '{tdir}'.format(tdir=testdir),
                 run.Raw('&&'),
                 'sudo', 'ceph',
                 'health',
             ],
-            stdout=StringIO(),
             logger=log.getChild('health'),
         )
-        out = r.stdout.getvalue()
         log.info('Ceph health: %s', out.rstrip('\n'))
         if out.split(None, 1)[0] == 'HEALTH_OK':
             break
@@ -222,7 +219,7 @@ def build_ceph_cluster(ctx, config):
     # puts it.  Remember this here, because subsequently IDs will change from those in
     # the test config to those that ceph-deploy invents.
 
-    (ceph_admin,) = iter(ctx.cluster.only('mon.a').remotes.keys())
+    (ceph_admin,) = ctx.cluster.only('mon.a').remotes.keys()
 
     def execute_ceph_deploy(cmd):
         """Remotely execute a ceph_deploy command"""
@@ -422,7 +419,7 @@ def build_ceph_cluster(ctx, config):
             conf_path = '/etc/ceph/ceph.conf'
             admin_keyring_path = '/etc/ceph/ceph.client.admin.keyring'
             first_mon = teuthology.get_first_mon(ctx, config)
-            (mon0_remote,) = list(ctx.cluster.only(first_mon).remotes.keys())
+            (mon0_remote,) = ctx.cluster.only(first_mon).remotes.keys()
             conf_data = teuthology.get_file(
                 remote=mon0_remote,
                 path=conf_path,
@@ -678,15 +675,13 @@ def cli_test(ctx, config):
     log.info("list files for debugging purpose to check file permissions")
     admin.run(args=['ls', run.Raw('-lt'), conf_dir])
     remote.run(args=['sudo', 'ceph', '-s'], check_status=False)
-    r = remote.run(args=['sudo', 'ceph', 'health'], stdout=StringIO())
-    out = r.stdout.getvalue()
+    out = remote.sh('sudo ceph health')
     log.info('Ceph health: %s', out.rstrip('\n'))
     log.info("Waiting for cluster to become healthy")
     with contextutil.safe_while(sleep=10, tries=6,
                                 action='check health') as proceed:
         while proceed():
-            r = remote.run(args=['sudo', 'ceph', 'health'], stdout=StringIO())
-            out = r.stdout.getvalue()
+            out = remote.sh('sudo ceph health')
             if (out.split(None, 1)[0] == 'HEALTH_OK'):
                 break
     rgw_install = 'install {branch} --rgw {node}'.format(
@@ -706,7 +701,7 @@ def cli_test(ctx, config):
         time.sleep(4)
         for i in range(3):
             umount_dev = "{d}1".format(d=devs[i])
-            remote.run(args=['sudo', 'umount', run.Raw(umount_dev)])
+            r = remote.run(args=['sudo', 'umount', run.Raw(umount_dev)])
         cmd = 'purge ' + nodename
         execute_cdeploy(admin, cmd, path)
         cmd = 'purgedata ' + nodename
@@ -778,7 +773,7 @@ def upgrade(ctx, config):
     log.info("roles={r}, mapped_roles={mr}".format(r=roles, mr=mapped_role))
     if config.get('branch'):
         branch = config.get('branch')
-        (var, val) = list(branch.items())[0]
+        (var, val) = branch.items()[0]
         ceph_branch = '--{var}={val}'.format(var=var, val=val)
     else:
         # default to wip-branch under test
@@ -786,7 +781,7 @@ def upgrade(ctx, config):
         ceph_branch = '--dev={branch}'.format(branch=dev_branch)
     # get the node used for initial deployment which is mon.a
     mon_a = mapped_role.get('mon.a')
-    (ceph_admin,) = iter(ctx.cluster.only(mon_a).remotes.keys())
+    (ceph_admin,) = ctx.cluster.only(mon_a).remotes.keys()
     testdir = teuthology.get_testdir(ctx)
     cmd = './ceph-deploy install ' + ceph_branch
     for role in roles:

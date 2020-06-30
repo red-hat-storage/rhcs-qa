@@ -3,7 +3,6 @@ Thrash mds by simulating failures
 """
 import logging
 import contextlib
-from . import ceph_manager
 import itertools
 import random
 import signal
@@ -14,6 +13,7 @@ from gevent.greenlet import Greenlet
 from gevent.event import Event
 from teuthology import misc as teuthology
 
+from tasks import ceph_manager
 from tasks.cephfs.filesystem import MDSCluster, Filesystem
 
 log = logging.getLogger(__name__)
@@ -60,14 +60,14 @@ class DaemonWatchdog(Greenlet):
 
     def bark(self):
         self.log("BARK! unmounting mounts and killing all daemons")
-        for mount in list(self.ctx.mounts.values()):
+        for mount in self.ctx.mounts.values():
             try:
                 mount.umount_wait(force=True)
             except:
                 self.logger.exception("ignoring exception:")
         daemons = []
-        daemons.extend([daemon for daemon in self.ctx.daemons.iter_daemons_of_role('mds', cluster=self.manager.cluster) if daemon.running() and not daemon.proc.finished])
-        daemons.extend([daemon for daemon in self.ctx.daemons.iter_daemons_of_role('mon', cluster=self.manager.cluster) if daemon.running() and not daemon.proc.finished])
+        daemons.extend(filter(lambda daemon: daemon.running() and not daemon.proc.finished, self.ctx.daemons.iter_daemons_of_role('mds', cluster=self.manager.cluster)))
+        daemons.extend(filter(lambda daemon: daemon.running() and not daemon.proc.finished, self.ctx.daemons.iter_daemons_of_role('mon', cluster=self.manager.cluster)))
         for daemon in daemons:
             try:
                 daemon.signal(signal.SIGTERM)
@@ -92,8 +92,8 @@ class DaemonWatchdog(Greenlet):
             #    self.log("mds daemon {role}.{id}: running={r}".format(role=daemon.role, id=daemon.id_, r=daemon.running() and not daemon.proc.finished))
 
             daemon_failures = []
-            daemon_failures.extend([daemon for daemon in mons if daemon.running() and daemon.proc.finished])
-            daemon_failures.extend([daemon for daemon in mdss if daemon.running() and daemon.proc.finished])
+            daemon_failures.extend(filter(lambda daemon: daemon.running() and daemon.proc.finished, mons))
+            daemon_failures.extend(filter(lambda daemon: daemon.running() and daemon.proc.finished, mdss))
             for daemon in daemon_failures:
                 name = daemon.role + '.' + daemon.id_
                 dt = daemon_failure_time.setdefault(name, (daemon, now))
@@ -104,7 +104,7 @@ class DaemonWatchdog(Greenlet):
                     bark = True
 
             # If a daemon is no longer failed, remove it from tracking:
-            for name in list(daemon_failure_time.keys()):
+            for name in daemon_failure_time.keys():
                 if name not in [d.role + '.' + d.id_ for d in daemon_failures]:
                     self.log("daemon {name} has been restored".format(name=name))
                     del daemon_failure_time[name]
@@ -254,8 +254,8 @@ class MDSThrasher(Greenlet):
 
     def kill_mds(self, mds):
         if self.config.get('powercycle'):
-            (remote,) = (iter(self.ctx.cluster.only('mds.{m}'.format(m=mds)).
-                         remotes.keys()))
+            (remote,) = (self.ctx.cluster.only('mds.{m}'.format(m=mds)).
+                         remotes.keys())
             self.log('kill_mds on mds.{m} doing powercycle of {s}'.
                      format(m=mds, s=remote.name))
             self._assert_ipmi(remote)
@@ -275,8 +275,8 @@ class MDSThrasher(Greenlet):
         and then restart.
         """
         if self.config.get('powercycle'):
-            (remote,) = (iter(self.ctx.cluster.only('mds.{m}'.format(m=mds)).
-                         remotes.keys()))
+            (remote,) = (self.ctx.cluster.only('mds.{m}'.format(m=mds)).
+                         remotes.keys())
             self.log('revive_mds on mds.{m} doing powercycle of {s}'.
                      format(m=mds, s=remote.name))
             self._assert_ipmi(remote)
@@ -291,10 +291,11 @@ class MDSThrasher(Greenlet):
             status = self.fs.status()
             max_mds = status.get_fsmap(self.fs.id)['mdsmap']['max_mds']
             ranks = list(status.get_ranks(self.fs.id))
-            stopping = [info for info in ranks if "up:stopping" == info['state']]
-            actives = [info for info in ranks if "up:active" == info['state'] and "laggy_since" not in info]
+            stopping = sum(1 for _ in ranks if "up:stopping" == _['state'])
+            actives = sum(1 for _ in ranks
+                          if "up:active" == _['state'] and "laggy_since" not in _)
 
-            if not bool(self.config.get('thrash_while_stopping', False)) and len(stopping) > 0:
+            if not bool(self.config.get('thrash_while_stopping', False)) and stopping > 0:
                 if itercount % 5 == 0:
                     self.log('cluster is considered unstable while MDS are in up:stopping (!thrash_while_stopping)')
             else:
@@ -306,13 +307,14 @@ class MDSThrasher(Greenlet):
                             return status
                     except:
                         pass # no rank present
-                    if len(actives) >= max_mds:
+                    if actives >= max_mds:
                         # no replacement can occur!
-                        self.log("cluster has %d actives (max_mds is %d), no MDS can replace rank %d".format(len(actives), max_mds, rank))
+                        self.log("cluster has {actives} actives (max_mds is {max_mds}), no MDS can replace rank {rank}".format(
+                            actives=actives, max_mds=max_mds, rank=rank))
                         return status
                 else:
-                    if len(actives) == max_mds:
-                        self.log('mds cluster has {count} alive and active, now stable!'.format(count = len(actives)))
+                    if actives == max_mds:
+                        self.log('mds cluster has {count} alive and active, now stable!'.format(count = actives))
                         return status, None
             if itercount > 300/2: # 5 minutes
                  raise RuntimeError('timeout waiting for cluster to stabilize')
@@ -492,7 +494,7 @@ def task(ctx, config):
     log.info('mds thrasher using random seed: {seed}'.format(seed=seed))
     random.seed(seed)
 
-    (first,) = iter(ctx.cluster.only('mds.{_id}'.format(_id=mdslist[0])).remotes.keys())
+    (first,) = ctx.cluster.only('mds.{_id}'.format(_id=mdslist[0])).remotes.keys()
     manager = ceph_manager.CephManager(
         first, ctx=ctx, logger=log.getChild('ceph_manager'),
     )

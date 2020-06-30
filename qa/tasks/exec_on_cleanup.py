@@ -5,7 +5,6 @@ import logging
 import contextlib
 
 from teuthology import misc as teuthology
-from teuthology import contextutil
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ def task(ctx, config):
             config = dict((id_, a) for id_ in roles)
 
             for role, ls in config.items():
-                (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+                (remote,) = ctx.cluster.only(role).remotes.keys()
                 log.info('Running commands on role %s host %s', role, remote.name)
                 for c in ls:
                     c.replace('$TESTDIR', testdir)

@@ -4,7 +4,9 @@ Cram tests
 import logging
 import os
 
-from .util.workunit import get_refspec_after_overrides
+import six
+
+from tasks.util.workunit import get_refspec_after_overrides
 
 from teuthology import misc as teuthology
 from teuthology.parallel import parallel
@@ -61,7 +63,7 @@ def task(ctx, config):
 
     try:
         for client, tests in clients.items():
-            (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             client_dir = '{tdir}/archive/cram.{role}'.format(tdir=testdir, role=client)
             remote.run(
                 args=[
@@ -89,7 +91,7 @@ def task(ctx, config):
                 p.spawn(_run_tests, ctx, role)
     finally:
         for client, tests in clients.items():
-            (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+            (remote,) = ctx.cluster.only(client).remotes.keys()
             client_dir = '{tdir}/archive/cram.{role}'.format(tdir=testdir, role=client)
             test_files = set([test.rsplit('/', 1)[1] for test in tests])
 
@@ -124,11 +126,11 @@ def _run_tests(ctx, role):
     :param ctx: Context
     :param role: Roles
     """
-    assert isinstance(role, str)
+    assert isinstance(role, six.string_types)
     PREFIX = 'client.'
     assert role.startswith(PREFIX)
     id_ = role[len(PREFIX):]
-    (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+    (remote,) = ctx.cluster.only(role).remotes.keys()
     ceph_ref = ctx.summary.get('ceph-sha1', 'master')
 
     testdir = teuthology.get_testdir(ctx)

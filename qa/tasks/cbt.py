@@ -3,7 +3,6 @@ import os
 import yaml
 
 from teuthology import misc
-from teuthology.config import config as teuth_config
 from teuthology.orchestra import run
 from teuthology.task import Task
 
@@ -19,7 +18,7 @@ class CBT(Task):
         self.log = log
 
     def hosts_of_type(self, type_):
-        return [r.name for r in list(self.ctx.cluster.only(misc.is_type(type_)).remotes.keys())]
+        return [r.name for r in self.ctx.cluster.only(misc.is_type(type_)).remotes.keys()]
 
     def generate_cbt_config(self):
         mon_hosts = self.hosts_of_type('mon')
@@ -45,7 +44,7 @@ class CBT(Task):
             )
 
         benchmark_config = self.config.get('benchmarks')
-        benchmark_type = list(benchmark_config.keys())[0]
+        benchmark_type = next(iter(benchmark_config.keys()))
         if benchmark_type == 'librbdfio':
           testdir = misc.get_testdir(self.ctx)
           benchmark_config['librbdfio']['cmd_path'] = os.path.join(testdir, 'fio/fio')
@@ -58,7 +57,7 @@ class CBT(Task):
             benchmark_config['cosbench']['controller'] = osd_hosts[0]
 
             # set auth details
-            remotes_and_roles = list(self.ctx.cluster.remotes.items())
+            remotes_and_roles = self.ctx.cluster.remotes.items()
             ips = [host for (host, port) in
                    (remote.ssh.get_transport().getpeername() for (remote, role_list) in remotes_and_roles)]
             benchmark_config['cosbench']['auth'] = "username=cosbench:operator;password=intel2012;url=http://%s:80/auth/v1.0;retry=9" %(ips[0])
@@ -73,13 +72,13 @@ class CBT(Task):
 
         if system_type == 'rpm':
             install_cmd = ['sudo', 'yum', '-y', 'install']
-            cbt_depends = ['python-yaml', 'python-lxml', 'librbd-devel', 'pdsh', 'collectl']
+            cbt_depends = ['python36-PyYAML', 'python36-lxml', 'librbd-devel', 'pdsh', 'collectl']
         else:
             install_cmd = ['sudo', 'apt-get', '-y', '--force-yes', 'install']
-            cbt_depends = ['python-yaml', 'python-lxml', 'librbd-dev', 'collectl']
+            cbt_depends = ['python3-yaml', 'python3-lxml', 'librbd-dev', 'collectl']
         self.first_mon.run(args=install_cmd + cbt_depends)
 
-        benchmark_type = list(self.cbt_config.get('benchmarks').keys())[0]
+        benchmark_type = next(iter(self.cbt_config.get('benchmarks').keys()))
         self.log.info('benchmark: %s', benchmark_type)
 
         if benchmark_type == 'librbdfio':
@@ -193,7 +192,7 @@ class CBT(Task):
 
     def setup(self):
         super(CBT, self).setup()
-        self.first_mon = list(self.ctx.cluster.only(misc.get_first_mon(self.ctx, self.config)).remotes.keys())[0]
+        self.first_mon = next(iter(self.ctx.cluster.only(misc.get_first_mon(self.ctx, self.config)).remotes.keys()))
         self.cbt_config = self.generate_cbt_config()
         self.log.info('cbt configuration is %s', self.cbt_config)
         self.cbt_dir = os.path.join(misc.get_archive_dir(self.ctx), 'cbt')
@@ -225,7 +224,7 @@ class CBT(Task):
                 '{tdir}/cbt'.format(tdir=testdir),
             ]
         )
-        benchmark_type = list(self.cbt_config.get('benchmarks').keys())[0]
+        benchmark_type = next(iter(self.cbt_config.get('benchmarks').keys()))
         if benchmark_type == 'librbdfio':
             self.first_mon.run(
                 args=[
@@ -240,6 +239,21 @@ class CBT(Task):
                 cosbench_version = 'cosbench-0.4.2.c3.1'
             else:
                 cosbench_version = '0.4.2.c3'
+            # note: stop-all requires 'nc'
+            self.first_mon.run(
+                args=[
+                    'cd', testdir, run.Raw('&&'),
+                    'cd', 'cos', run.Raw('&&'),
+                    'sh', 'stop-all.sh',
+                    run.Raw('||'), 'true'
+                ]
+            )
+            self.first_mon.run(
+                args=[
+                    'sudo', 'killall', '-9', 'java',
+                    run.Raw('||'), 'true'
+                ]
+            )
             self.first_mon.run(
                 args=[
                     'rm', '--one-file-system', '-rf', '--',

@@ -7,7 +7,6 @@ import logging
 
 from teuthology import misc as teuthology
 from tasks.cephfs.fuse_mount import FuseMount
-from tasks.cephfs.filesystem import Filesystem
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ def task(ctx, config):
     log.info("new config is {}".format(str(config)))
 
     # List clients we will configure mounts for, default is all clients
-    clients = list(teuthology.get_clients(ctx=ctx, roles=[x for x in list(config.keys()) if 'client.' in x]))
+    clients = list(teuthology.get_clients(ctx=ctx, roles=filter(lambda x: 'client.' in x, config.keys())))
 
     all_mounts = getattr(ctx, 'mounts', {})
     mounted_by_me = {}
@@ -132,10 +131,10 @@ def task(ctx, config):
 
     # Mount any clients we have been asked to (default to mount all)
     log.info('Mounting ceph-fuse clients...')
-    for mount in list(mounted_by_me.values()):
+    for mount in mounted_by_me.values():
         mount.mount()
 
-    for mount in list(mounted_by_me.values()):
+    for mount in mounted_by_me.values():
         mount.wait_until_mounted()
 
     # Umount any pre-existing clients that we have not been asked to mount
@@ -149,7 +148,7 @@ def task(ctx, config):
     finally:
         log.info('Unmounting ceph-fuse clients...')
 
-        for mount in list(mounted_by_me.values()):
+        for mount in mounted_by_me.values():
             # Conditional because an inner context might have umounted it
             if mount.is_mounted():
                 mount.umount_wait()

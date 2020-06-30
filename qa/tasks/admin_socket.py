@@ -89,13 +89,13 @@ def _socket_command(ctx, remote, socket_path, command, args):
     while True:
         try:
             out = remote.sh([
-                    'sudo',
-                    'adjust-ulimits',
-                    'ceph-coverage',
-                    '{tdir}/archive/coverage'.format(tdir=testdir),
-                    'ceph',
-                    '--admin-daemon', socket_path,
-                    ] + command.split(' ') + args)
+                'sudo',
+                'adjust-ulimits',
+                'ceph-coverage',
+                '{tdir}/archive/coverage'.format(tdir=testdir),
+                'ceph',
+                '--admin-daemon', socket_path,
+                ] + command.split(' ') + args)
         except CommandFailedError:
             assert max_tries > 0
             max_tries -= 1
@@ -103,6 +103,7 @@ def _socket_command(ctx, remote, socket_path, command, args):
             log.info('sleeping and retrying ...')
             time.sleep(1)
             continue
+        break
     log.debug('admin socket command %s returned %s', command, out)
     return json.loads(out)
 
@@ -119,7 +120,7 @@ def _run_tests(ctx, client, tests):
     """
     testdir = teuthology.get_testdir(ctx)
     log.debug('Running admin socket tests on %s', client)
-    (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+    (remote,) = ctx.cluster.only(client).remotes.keys()
     socket_path = '/var/run/ceph/ceph-{name}.asok'.format(name=client)
     overrides = ctx.config.get('overrides', {}).get('admin_socket', {})
 

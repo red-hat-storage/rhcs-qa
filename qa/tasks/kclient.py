@@ -8,7 +8,7 @@ from teuthology.misc import deep_merge
 from teuthology.orchestra.run import CommandFailedError
 from teuthology import misc
 from teuthology.contextutil import MaxWhileTries
-from .cephfs.kernel_mount import KernelMount
+from tasks.cephfs.kernel_mount import KernelMount
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def task(ctx, config):
         client_roles = config
         config = dict([r, dict()] for r in client_roles)
     elif isinstance(config, dict):
-        client_roles = [x for x in list(config.keys()) if 'client.' in x]
+        client_roles = filter(lambda x: 'client.' in x, config.keys())
     else:
         raise ValueError("Invalid config object: {0} ({1})".format(config, config.__class__))
 
@@ -112,12 +112,12 @@ def task(ctx, config):
         log.info('Unmounting kernel clients...')
 
         forced = False
-        for mount in list(mounts.values()):
+        for mount in mounts.values():
             if mount.is_mounted():
                 try:
                     mount.umount()
                 except (CommandFailedError, MaxWhileTries):
-                    log.warn("Ordinary umount failed, forcing...")
+                    log.warning("Ordinary umount failed, forcing...")
                     forced = True
                     mount.umount_wait(force=True)
 

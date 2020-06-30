@@ -26,7 +26,7 @@ from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology import exceptions
 from teuthology.orchestra import run
-from tasks import ceph_client as cclient
+import tasks.ceph_client as cclient
 from teuthology.orchestra.daemon import DaemonGroup
 
 CEPH_ROLE_TYPES = ['mon', 'mgr', 'osd', 'mds', 'rgw']
@@ -65,7 +65,7 @@ def generate_caps(type_):
             mds='allow',
         ),
     )
-    for subsystem, capability in list(defaults[type_].items()):
+    for subsystem, capability in defaults[type_].items():
         yield '--cap'
         yield subsystem
         yield capability
@@ -85,18 +85,18 @@ def ceph_crash(ctx, config):
             path = os.path.join(ctx.archive, 'remote')
             try:
                 os.makedirs(path)
-            except OSError as e:
+            except OSError:
                 pass
             for remote in ctx.cluster.remotes.keys():
                 sub = os.path.join(path, remote.shortname)
                 try:
                     os.makedirs(sub)
-                except OSError as e:
+                except OSError:
                     pass
                 try:
                     teuthology.pull_directory(remote, '/var/lib/ceph/crash',
                                               os.path.join(sub, 'crash'))
-                except ReadError as e:
+                except ReadError:
                     pass
 
 
@@ -166,16 +166,16 @@ def ceph_log(ctx, config):
                     # case we will see connection errors that we should ignore.
                     log.debug("Missed logrotate, node '{0}' is offline".format(
                         e.node))
-                except EOFError as e:
+                except EOFError:
                     # Paramiko sometimes raises this when it fails to
                     # connect to a node during open_session.  As with
                     # ConnectionLostError, we ignore this because nodes
                     # are allowed to get power cycled during tests.
                     log.debug("Missed logrotate, EOFError")
-                except SSHException as e:
+                except SSHException:
                     log.debug("Missed logrotate, SSHException")
                 except socket.error as e:
-                    if e.errno == errno.EHOSTUNREACH:
+                    if e.errno in (errno.EHOSTUNREACH, errno.ECONNRESET):
                         log.debug("Missed logrotate, host unreachable")
                     else:
                         raise
@@ -191,11 +191,12 @@ def ceph_log(ctx, config):
         testdir = teuthology.get_testdir(ctx)
         remote_logrotate_conf = '%s/logrotate.ceph-test.conf' % testdir
         rotate_conf_path = os.path.join(os.path.dirname(__file__), 'logrotate.conf')
-        with file(rotate_conf_path, 'rb') as f:
+        with open(rotate_conf_path, 'rb') as f:
             conf = ""
             for daemon, size in daemons.items():
-                log.info('writing logrotate stanza for {daemon}'.format(daemon=daemon))
-                conf += f.read().format(daemon_type=daemon, max_size=size)
+                log.info('writing logrotate stanza for {}'.format(daemon))
+                conf += six.ensure_str(f.read()).format(daemon_type=daemon,
+                                                        max_size=size)
                 f.seek(0, 0)
 
             for remote in ctx.cluster.remotes.keys():
@@ -271,13 +272,13 @@ def ceph_log(ctx, config):
             path = os.path.join(ctx.archive, 'remote')
             try:
                 os.makedirs(path)
-            except OSError as e:
+            except OSError:
                 pass
             for remote in ctx.cluster.remotes.keys():
                 sub = os.path.join(path, remote.shortname)
                 try:
                     os.makedirs(sub)
-                except OSError as e:
+                except OSError:
                     pass
                 teuthology.pull_directory(remote, '/var/log/ceph',
                                           os.path.join(sub, 'log'))
@@ -291,7 +292,7 @@ def assign_devs(roles, devs):
     :param devs: Corresponding list of devices.
     :returns: Dictionary of devs indexed by roles.
     """
-    return dict(list(zip(roles, devs)))
+    return dict(zip(roles, devs))
 
 
 @contextlib.contextmanager
@@ -354,7 +355,7 @@ def valgrind_post(ctx, config):
 def crush_setup(ctx, config):
     cluster_name = config['cluster']
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon_remote,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon_remote,) = ctx.cluster.only(first_mon).remotes.keys()
 
     profile = config.get('crush_tunables', 'default')
     log.info('Setting crush tunables to %s', profile)
@@ -368,7 +369,7 @@ def crush_setup(ctx, config):
 def create_rbd_pool(ctx, config):
     cluster_name = config['cluster']
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon_remote,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon_remote,) = ctx.cluster.only(first_mon).remotes.keys()
     log.info('Waiting for OSDs to come up')
     teuthology.wait_until_osds_up(
         ctx,
@@ -397,7 +398,7 @@ def cephfs_setup(ctx, config):
     coverage_dir = '{tdir}/archive/coverage'.format(tdir=testdir)
 
     first_mon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon_remote,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+    (mon_remote,) = ctx.cluster.only(first_mon).remotes.keys()
     mdss = ctx.cluster.only(teuthology.is_type('mds', cluster_name))
     # If there are any MDSs, then create a filesystem for them to use
     # Do this last because requires mon cluster to be up and running
@@ -633,7 +634,7 @@ def cluster(ctx, config):
         remote_to_roles_to_journals[remote] = roles_to_journals
 
     log.info('Generating config...')
-    remotes_and_roles = list(ctx.cluster.remotes.items())
+    remotes_and_roles = ctx.cluster.remotes.items()
     roles = [role_list for (remote, role_list) in remotes_and_roles]
     ips = [remote.ip_address for (remote, role_list) in remotes_and_roles]
     mons = get_mons(
@@ -705,7 +706,7 @@ def cluster(ctx, config):
             keyring_path,
         ],
     )
-    (mon0_remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+    (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
     monmap_path = '{tdir}/{cluster}.monmap'.format(tdir=testdir,
                                                    cluster=cluster_name)
     fsid = create_simple_monmap(
@@ -1100,7 +1101,7 @@ def cluster(ctx, config):
         ctx.summary['success'] = False
         raise
     finally:
-        (mon0_remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+        (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
 
         log.info('Checking cluster log for badness...')
 
@@ -1440,7 +1441,7 @@ def healthy(ctx, config):
         log.info('ignoring mgr wait error, probably testing upgrade: %s', e)
 
     firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon0_remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+    (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
     teuthology.wait_until_osds_up(
         ctx,
         cluster=ctx.cluster,
@@ -1478,7 +1479,7 @@ def wait_for_osds_up(ctx, config):
     log.info('Waiting until ceph osds are all up...')
     cluster_name = config.get('cluster', 'ceph')
     firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (mon0_remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+    (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
     teuthology.wait_until_osds_up(
         ctx,
         cluster=ctx.cluster,
@@ -1501,7 +1502,7 @@ def wait_for_mon_quorum(ctx, config):
         mons = config
         cluster_name = 'ceph'
     firstmon = teuthology.get_first_mon(ctx, config, cluster_name)
-    (remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+    (remote,) = ctx.cluster.only(firstmon).remotes.keys()
     with contextutil.safe_while(sleep=10, tries=60,
                                 action='wait for monitor quorum') as proceed:
         while proceed():
@@ -1554,7 +1555,7 @@ def tweaked_option(ctx, config):
             saved_options[option] = old_value
             manager.inject_args(type_, id_, option, value)
     yield
-    for option, value in list(saved_options.items()):
+    for option, value in saved_options.items():
         manager.inject_args(type_, id_, option, value)
 
 
@@ -1686,7 +1687,7 @@ def validate_config(ctx, config):
     Raises exceptions.ConfigError if an error is found.
     """
     # check for osds from multiple clusters on the same host
-    for remote, roles_for_host in list(ctx.cluster.remotes.items()):
+    for remote, roles_for_host in ctx.cluster.remotes.items():
         last_cluster = None
         last_role = None
         for role in roles_for_host:
@@ -1882,7 +1883,7 @@ def task(ctx, config):
 
     with contextutil.nested(*subtasks):
         first_mon = teuthology.get_first_mon(ctx, config, config['cluster'])
-        (mon,) = iter(ctx.cluster.only(first_mon).remotes.keys())
+        (mon,) = ctx.cluster.only(first_mon).remotes.keys()
         if not hasattr(ctx, 'managers'):
             ctx.managers = {}
         ctx.managers[config['cluster']] = CephManager(
@@ -1908,7 +1909,7 @@ def task(ctx, config):
             # stop logging health to clog during shutdown, or else we generate
             # a bunch of scary messages unrelated to our actual run.
             firstmon = teuthology.get_first_mon(ctx, config, config['cluster'])
-            (mon0_remote,) = list(ctx.cluster.only(firstmon).remotes.keys())
+            (mon0_remote,) = ctx.cluster.only(firstmon).remotes.keys()
             mon0_remote.run(
                 args=[
                     'sudo',
