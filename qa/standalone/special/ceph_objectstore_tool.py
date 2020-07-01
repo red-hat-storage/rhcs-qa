@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-
+from __future__ import print_function
 from subprocess import call
 try:
     from subprocess import check_output
 except ImportError:
-    def check_output(*popenargs, **kwargs): # noqa
+    def check_output(*popenargs, **kwargs):
         import subprocess
         # backported from python 2.7 stdlib
         process = subprocess.Popen(
@@ -45,7 +45,7 @@ if sys.version_info[0] >= 3:
     def decode(s):
         return s.decode('utf-8')
 
-    def check_output(*args, **kwargs):
+    def check_output(*args, **kwargs): # noqa
         return decode(subprocess.check_output(*args, **kwargs))
 else:
     def decode(s):
@@ -225,7 +225,7 @@ def verify(DATADIR, POOL, NAME_PREFIX, db):
             os.unlink(TMPFILE)
         except:
             pass
-        for key, val in list(db[nspace][file]["xattr"].items()):
+        for key, val in db[nspace][file]["xattr"].items():
             cmd = "{path}/rados -p {pool} -N '{nspace}' getxattr {name} {key}".format(pool=POOL, name=file, key=key, nspace=nspace, path=CEPH_BIN)
             logging.debug(cmd)
             getval = check_output(cmd, shell=True, stderr=DEVNULL)
@@ -252,7 +252,7 @@ def verify(DATADIR, POOL, NAME_PREFIX, db):
             if gethdr != hdr:
                 logging.error("getomapheader returned wrong val: {get} instead of {orig}".format(get=gethdr, orig=hdr))
                 ERRORS += 1
-        for key, val in list(db[nspace][file]["omap"].items()):
+        for key, val in db[nspace][file]["omap"].items():
             cmd = "{path}/rados -p {pool} -N '{nspace}' getomapval {name} {key} {file}".format(pool=POOL, name=file, key=key, nspace=nspace, file=TMPFILE, path=CEPH_BIN)
             logging.debug(cmd)
             ret = call(cmd, shell=True, stderr=DEVNULL)
@@ -604,8 +604,8 @@ def test_removeall(CFSD_PREFIX, db, OBJREPPGS, REP_POOL, CEPH_BIN, OSDDIR, REP_N
     errors=0
     print("Test removeall")
     kill_daemons()
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
             JSON = db[nspace][basename]['json']
             for pg in OBJREPPGS:
                 OSDS = get_osds(pg, OSDDIR)
@@ -743,8 +743,8 @@ def main(argv):
 
     db = {}
 
-    objects = list(range(1, NUM_REP_OBJECTS + 1))
-    nspaces = list(range(NUM_NSPACES))
+    objects = range(1, NUM_REP_OBJECTS + 1)
+    nspaces = range(NUM_NSPACES)
     for n in nspaces:
         nspace = get_nspace(n)
 
@@ -761,9 +761,9 @@ def main(argv):
             call(cmd, shell=True)
 
             if i == 1:
-                dataline = list(range(DATALINECOUNT))
+                dataline = range(DATALINECOUNT)
             else:
-                dataline = list(range(1))
+                dataline = range(1)
             fd = open(DDNAME, "w")
             data = "This is the replicated data for " + LNAME + "\n"
             for _ in dataline:
@@ -780,9 +780,9 @@ def main(argv):
             db[nspace][NAME] = {}
 
             if i < ATTR_OBJS + 1:
-                keys = list(range(i))
+                keys = range(i)
             else:
-                keys = list(range(0))
+                keys = range(0)
             db[nspace][NAME]["xattr"] = {}
             for k in keys:
                 if k == 0:
@@ -826,8 +826,8 @@ def main(argv):
     logging.debug(cmd)
     call(cmd, shell=True)
 
-    objects = list(range(1, NUM_CLONED_REP_OBJECTS + 1))
-    nspaces = list(range(NUM_NSPACES))
+    objects = range(1, NUM_CLONED_REP_OBJECTS + 1)
+    nspaces = range(NUM_NSPACES)
     for n in nspaces:
         nspace = get_nspace(n)
 
@@ -844,9 +844,9 @@ def main(argv):
             call(cmd, shell=True)
 
             if i == 1:
-                dataline = list(range(DATALINECOUNT))
+                dataline = range(DATALINECOUNT)
             else:
-                dataline = list(range(1))
+                dataline = range(1)
             fd = open(DDNAME, "w")
             data = "This is the replicated data after a snapshot for " + LNAME + "\n"
             for _ in dataline:
@@ -862,8 +862,8 @@ def main(argv):
 
     print("Creating {objs} objects in erasure coded pool".format(objs=(NUM_EC_OBJECTS*NUM_NSPACES)))
 
-    objects = list(range(1, NUM_EC_OBJECTS + 1))
-    nspaces = list(range(NUM_NSPACES))
+    objects = range(1, NUM_EC_OBJECTS + 1)
+    nspaces = range(NUM_NSPACES)
     for n in nspaces:
         nspace = get_nspace(n)
 
@@ -878,9 +878,9 @@ def main(argv):
             call(cmd, shell=True)
 
             if i == 1:
-                dataline = list(range(DATALINECOUNT))
+                dataline = range(DATALINECOUNT)
             else:
-                dataline = list(range(1))
+                dataline = range(1)
             fd = open(DDNAME, "w")
             data = "This is the erasure coded data for " + LNAME + "\n"
             for j in dataline:
@@ -898,9 +898,9 @@ def main(argv):
 
             db[nspace][NAME]["xattr"] = {}
             if i < ATTR_OBJS + 1:
-                keys = list(range(i))
+                keys = range(i)
             else:
-                keys = list(range(0))
+                keys = range(0)
             for k in keys:
                 if k == 0:
                     continue
@@ -1138,8 +1138,8 @@ def main(argv):
 
     # Test get-bytes
     print("Test get-bytes and set-bytes")
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename + "__head")
             JSON = db[nspace][basename]['json']
             GETNAME = "/tmp/getbytes.{pid}".format(pid=pid)
@@ -1261,8 +1261,8 @@ def main(argv):
 
     # Test get-attr, set-attr, rm-attr, get-omaphdr, set-omaphdr, get-omap, set-omap, rm-omap
     print("Test get-attr, set-attr, rm-attr, get-omaphdr, set-omaphdr, get-omap, set-omap, rm-omap")
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename + "__head")
             JSON = db[nspace][basename]['json']
             for pg in OBJREPPGS:
@@ -1273,7 +1273,7 @@ def main(argv):
                               and f.split("_")[0] == basename and f.split("_")[4] == nspace]
                     if not fnames:
                         continue
-                    for key, val in list(db[nspace][basename]["xattr"].items()):
+                    for key, val in db[nspace][basename]["xattr"].items():
                         attrkey = "_" + key
                         cmd = (CFSD_PREFIX + " '{json}' get-attr {key}").format(osd=osd, json=JSON, key=attrkey)
                         logging.debug(cmd)
@@ -1386,7 +1386,7 @@ def main(argv):
                         ERRORS += 1
                         continue
 
-                    for omapkey, val in list(db[nspace][basename]["omap"].items()):
+                    for omapkey, val in db[nspace][basename]["omap"].items():
                         cmd = (CFSD_PREFIX + " '{json}' get-omap {key}").format(osd=osd, json=JSON, key=omapkey)
                         logging.debug(cmd)
                         getval = check_output(cmd, shell=True)
@@ -1453,8 +1453,8 @@ def main(argv):
 
     # Test dump
     print("Test dump")
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename + "__head")
             JSON = db[nspace][basename]['json']
             jsondict = json.loads(JSON)
@@ -1499,8 +1499,8 @@ def main(argv):
     print("Test list-attrs get-attr")
     ATTRFILE = r"/tmp/attrs.{pid}".format(pid=pid)
     VALFILE = r"/tmp/val.{pid}".format(pid=pid)
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename)
             JSON = db[nspace][basename]['json']
             jsondict = json.loads(JSON)
@@ -1730,8 +1730,8 @@ def main(argv):
     ERRORS += EXP_ERRORS
 
     print("Test clear-data-digest")
-    for nspace in list(db.keys()):
-        for basename in list(db[nspace].keys()):
+    for nspace in db.keys():
+        for basename in db[nspace].keys():
           JSON = db[nspace][basename]['json']
           cmd = (CFSD_PREFIX + "'{json}' clear-data-digest").format(osd='osd0', json=JSON)
           logging.debug(cmd)
@@ -1899,8 +1899,8 @@ def main(argv):
     RM_ERRORS = 0
     IMP_ERRORS = 0
 
-    objects = list(range(1, SPLIT_OBJ_COUNT + 1))
-    nspaces = list(range(SPLIT_NSPACE_COUNT))
+    objects = range(1, SPLIT_OBJ_COUNT + 1)
+    nspaces = range(SPLIT_NSPACE_COUNT)
     for n in nspaces:
         nspace = get_nspace(n)
 
@@ -1915,9 +1915,9 @@ def main(argv):
             call(cmd, shell=True)
 
             if i == 1:
-                dataline = list(range(DATALINECOUNT))
+                dataline = range(DATALINECOUNT)
             else:
-                dataline = list(range(1))
+                dataline = range(1)
             fd = open(DDNAME, "w")
             data = "This is the split data for " + LNAME + "\n"
             for _ in dataline:
