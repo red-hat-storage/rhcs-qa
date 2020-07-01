@@ -63,7 +63,7 @@ def get_refspec_after_overrides(config, overrides):
     overrides = copy.deepcopy(overrides.get('workunit', {}))
     refspecs = {'suite_sha1': Refspec, 'suite_branch': Branch,
                 'sha1': Refspec, 'tag': Refspec, 'branch': Branch}
-    if any([i in config for i in iter(refspecs.keys())]):
+    if any(map(lambda i: i in config, refspecs.keys())):
         for i in refspecs.keys():
             overrides.pop(i, None)
     misc.deep_merge(config, overrides)

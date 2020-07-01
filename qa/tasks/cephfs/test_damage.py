@@ -274,7 +274,7 @@ class TestDamage(CephFSTestCase):
                 except RuntimeError:
                     crashed = False
                     # Didn't make it to healthy or damaged, did it crash?
-                    for daemon_id, daemon in list(self.fs.mds_daemons.items()):
+                    for daemon_id, daemon in self.fs.mds_daemons.items():
                         if daemon.proc and daemon.proc.finished:
                             crashed = True
                             log.error("Daemon {0} crashed!".format(daemon_id))
@@ -361,7 +361,7 @@ class TestDamage(CephFSTestCase):
                 if len(damage) == 0:
                     results[mutation] = EIO_NO_DAMAGE
 
-        failures = [(mutation, result) for (mutation, result) in list(results.items()) if mutation.expectation != result]
+        failures = [(mutation, result) for (mutation, result) in results.items() if mutation.expectation != result]
         if failures:
             log.error("{0} mutations had unexpected outcomes:".format(len(failures)))
             for mutation, result in failures:

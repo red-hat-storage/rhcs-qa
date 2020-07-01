@@ -39,12 +39,12 @@ class TestDumpTree(CephFSTestCase):
 
         self.populate()
         inos = self.get_paths_to_ino()
-        target = random.choice(list(inos.keys()))
+        target = random.sample(inos.keys(), 1)[0]
 
         if target != "./":
             target = os.path.dirname(target)
 
-        subtree = [path for path in list(inos.keys()) if path.startswith(target)]
+        subtree = [path for path in inos.keys() if path.startswith(target)]
         target_inos = [inos[path] for path in subtree]
         tree = self.fs.mds_asok(["dump", "tree", target[1:]])
 

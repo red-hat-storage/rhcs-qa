@@ -15,7 +15,7 @@ def get_remote(ctx, cluster, service_type, service_id):
         role_tuple = misc.split_role(role)
         return role_tuple == (cluster, service_type, str(service_id))
     try:
-        (remote,) = list(ctx.cluster.only(_is_instance).remotes.keys())
+        (remote,) = ctx.cluster.only(_is_instance).remotes.keys()
     except ValueError:
         raise KeyError("Service {0}.{1}.{2} not found".format(cluster,
                                                               service_type,

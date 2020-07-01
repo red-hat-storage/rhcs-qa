@@ -101,7 +101,7 @@ class TestExports(CephFSTestCase):
         self.assertTrue(self.mount_a.getfattr("1/4", "ceph.dir.pin") == "-1")
         self.assertTrue(self.mount_a.getfattr("1/4/5", "ceph.dir.pin") == "1")
         if (len(self.fs.get_active_names()) > 2):
-            self.assertTrue(self.mount_a.getfattr("1/2/3", "ceph.dir.pin") == "2")
+            self.assertEqual(self.mount_a.getfattr("1/2/3", "ceph.dir.pin"), '2')
 
     def test_session_race(self):
         """
@@ -114,7 +114,6 @@ class TestExports(CephFSTestCase):
         status = self.fs.wait_for_daemons()
 
         rank1 = self.fs.get_rank(rank=1, status=status)
-        name1 = 'mds.'+rank1['name']
 
         # Create a directory that is pre-exported to rank 1
         self.mount_a.run_shell(["mkdir", "-p", "a/aa"])

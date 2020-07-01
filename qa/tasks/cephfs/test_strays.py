@@ -4,7 +4,6 @@ import logging
 from textwrap import dedent
 import datetime
 import gevent
-import datetime
 
 from teuthology.orchestra.run import CommandFailedError, Raw
 from tasks.cephfs.cephfs_test_case import CephFSTestCase, for_teuthology
@@ -45,11 +44,10 @@ class TestStrays(CephFSTestCase):
             size = {size}
             file_count = {file_count}
             os.mkdir(os.path.join(mount_path, subdir))
-            for i in xrange(0, file_count):
+            for i in range(0, file_count):
                 filename = "{{0}}_{{1}}.bin".format(i, size)
-                f = open(os.path.join(mount_path, subdir, filename), 'w')
-                f.write(size * 'x')
-                f.close()
+                with open(os.path.join(mount_path, subdir, filename), 'w') as f:
+                    f.write(size * 'x')
         """.format(
             mount_path=self.mount_a.mountpoint,
             size=1024,
@@ -138,7 +136,7 @@ class TestStrays(CephFSTestCase):
             size_unit = 1024  # small, numerous files
             file_multiplier = 200
         else:
-            raise NotImplemented(throttle_type)
+            raise NotImplementedError(throttle_type)
 
         # Pick up config changes
         self.fs.mds_fail_restart()

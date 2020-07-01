@@ -1,11 +1,11 @@
 import json
 import logging
-import time
 import os
 from textwrap import dedent
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError
+from teuthology.misc import sudo_write_file
 
 log = logging.getLogger(__name__)
 

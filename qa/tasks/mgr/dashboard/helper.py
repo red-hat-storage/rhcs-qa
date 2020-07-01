@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # pylint: disable=W0212,too-many-return-statements
-
+from __future__ import absolute_import
 
 import json
 import logging
@@ -11,7 +11,7 @@ import requests
 import six
 from teuthology.exceptions import CommandFailedError
 
-from ..mgr_test_case import MgrTestCase
+from tasks.mgr.mgr_test_case import MgrTestCase
 
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class DashboardTestCase(MgrTestCase):
                     if ex.exitstatus != 2:
                         raise ex
                 cls._ceph_cmd(['dashboard', 'ac-role-create', rolename])
-                for mod, perms in list(role.items()):
+                for mod, perms in role.items():
                     args = ['dashboard', 'ac-role-add-scope-perms', rolename, mod]
                     args.extend(perms)
                     cls._ceph_cmd(args)
@@ -320,7 +320,7 @@ class DashboardTestCase(MgrTestCase):
         cls._session = requests.Session()
 
     def assertSubset(self, data, biggerData):
-        for key, value in list(data.items()):
+        for key, value in data.items():
             self.assertEqual(biggerData[key], value)
 
     def assertJsonBody(self, data):
@@ -349,7 +349,7 @@ class DashboardTestCase(MgrTestCase):
             self.assertEqual(self._resp.status_code, status)
 
     def assertHeaders(self, headers):
-        for name, value in list(headers.items()):
+        for name, value in headers.items():
             self.assertIn(name, self._resp.headers)
             self.assertEqual(self._resp.headers[name], value)
 
@@ -491,7 +491,7 @@ def _validate_json(val, schema, path=[]):
             raise _ValError('unknown keys: {}'.format(unknown_keys), path)
         result = all(
             _validate_json(val[key], sub_schema, path + [key])
-            for key, sub_schema in list(schema.sub_elems.items())
+            for key, sub_schema in schema.sub_elems.items()
         )
         if unknown_keys and schema.allow_unknown and schema.unknown_schema:
             result += all(

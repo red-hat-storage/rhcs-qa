@@ -34,7 +34,7 @@ class TestFragmentation(CephFSTestCase):
         and restart the MDSs.
         """
 
-        for k, v in list(kwargs.items()):
+        for k, v in kwargs.items():
             self.ceph_cluster.set_ceph_conf("mds", k, v.__str__())
 
         self.mds_cluster.mds_fail_restart()

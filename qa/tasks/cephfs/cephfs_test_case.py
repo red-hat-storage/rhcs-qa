@@ -5,7 +5,6 @@ from unittest import case
 from tasks.ceph_test_case import CephTestCase
 import os
 import re
-from io import StringIO
 
 from tasks.cephfs.fuse_mount import FuseMount
 
@@ -113,7 +112,7 @@ class CephFSTestCase(CephTestCase):
             blacklist = json.loads(self.mds_cluster.mon_manager.raw_cluster_cmd("osd",
                                   "dump", "--format=json-pretty"))['blacklist']
             log.info("Removing {0} blacklist entries".format(len(blacklist)))
-            for addr, blacklisted_at in list(blacklist.items()):
+            for addr, blacklisted_at in blacklist.items():
                 self.mds_cluster.mon_manager.raw_cluster_cmd("osd", "blacklist", "rm", addr)
 
         client_mount_ids = [m.client_id for m in self.mounts]
@@ -141,7 +140,7 @@ class CephFSTestCase(CephTestCase):
                     'mon', 'allow r',
                     'osd', 'allow rw pool={0}'.format(self.fs.get_data_pool_name()))
 
-            # wait for mds restart to complete...
+            # wait for ranks to become active
             self.fs.wait_for_daemons()
 
             # Mount the requested number of clients
@@ -166,7 +165,7 @@ class CephFSTestCase(CephTestCase):
         # Load an config settings of interest
         for setting in self.LOAD_SETTINGS:
             setattr(self, setting, float(self.fs.mds_asok(
-                ['config', 'get', setting], self.mds_cluster.mds_ids[0]
+                ['config', 'get', setting], list(self.mds_cluster.mds_ids)[0]
             )[setting]))
 
         self.configs_set = set()
@@ -246,7 +245,7 @@ class CephFSTestCase(CephTestCase):
                 timeout=30
             )
         except RuntimeError:
-            log.warn("Timeout waiting for daemons {0}, while we have {1}".format(
+            log.warning("Timeout waiting for daemons {0}, while we have {1}".format(
                 daemon_ids, get_daemon_names()
             ))
             raise
@@ -254,21 +253,21 @@ class CephFSTestCase(CephTestCase):
     def delete_mds_coredump(self, daemon_id):
         # delete coredump file, otherwise teuthology.internal.coredump will
         # catch it later and treat it as a failure.
-        p = self.mds_cluster.mds_daemons[daemon_id].remote.run(args=[
-            "sudo", "sysctl", "-n", "kernel.core_pattern"], stdout=StringIO())
-        core_dir = os.path.dirname(p.stdout.getvalue().strip())
+        core_pattern = self.mds_cluster.mds_daemons[daemon_id].remote.sh(
+            "sudo sysctl -n kernel.core_pattern")
+        core_dir = os.path.dirname(core_pattern.strip())
         if core_dir:  # Non-default core_pattern with a directory in it
             # We have seen a core_pattern that looks like it's from teuthology's coredump
             # task, so proceed to clear out the core file
             log.info("Clearing core from directory: {0}".format(core_dir))
 
             # Verify that we see the expected single coredump
-            ls_proc = self.mds_cluster.mds_daemons[daemon_id].remote.run(args=[
+            ls_output = self.mds_cluster.mds_daemons[daemon_id].remote.sh([
                 "cd", core_dir, run.Raw('&&'),
                 "sudo", "ls", run.Raw('|'), "sudo", "xargs", "file"
-            ], stdout=StringIO())
+            ])
             cores = [l.partition(":")[0]
-                     for l in ls_proc.stdout.getvalue().strip().split("\n")
+                     for l in ls_output.strip().split("\n")
                      if re.match(r'.*ceph-mds.* -i +{0}'.format(daemon_id), l)]
 
             log.info("Enumerated cores: {0}".format(cores))
@@ -286,9 +285,9 @@ class CephFSTestCase(CephTestCase):
         timeout = 30
         pause = 2
         test = sorted(test)
-        for i in range(timeout/pause):
+        for i in range(timeout // pause):
             subtrees = self.fs.mds_asok(["get", "subtrees"], mds_id=status.get_rank(self.fs.id, rank)['name'])
-            subtrees = [s for s in subtrees if s['dir']['path'].startswith('/')]
+            subtrees = filter(lambda s: s['dir']['path'].startswith('/'), subtrees)
             filtered = sorted([(s['dir']['path'], s['auth_first']) for s in subtrees])
             log.info("%s =?= %s", filtered, test)
             if filtered == test:

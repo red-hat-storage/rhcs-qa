@@ -66,7 +66,7 @@ class MgrTestCase(CephTestCase):
     @classmethod
     def setup_mgrs(cls):
         # Stop all the daemons
-        for daemon in list(cls.mgr_cluster.mgr_daemons.values()):
+        for daemon in cls.mgr_cluster.mgr_daemons.values():
             daemon.stop()
 
         for mgr_id in cls.mgr_cluster.mgr_ids:
@@ -82,7 +82,7 @@ class MgrTestCase(CephTestCase):
                 "mgr", "module", "disable", m)
 
         # Start all the daemons
-        for daemon in list(cls.mgr_cluster.mgr_daemons.values()):
+        for daemon in cls.mgr_cluster.mgr_daemons.values():
             daemon.restart()
 
         # Wait for an active to come up
@@ -101,9 +101,9 @@ class MgrTestCase(CephTestCase):
         assert cls.mgr_cluster is not None
 
         if len(cls.mgr_cluster.mgr_ids) < cls.MGRS_REQUIRED:
-            raise case.SkipTest("Only have {0} manager daemons, "
-                                "{1} are required".format(
-                len(cls.mgr_cluster.mgr_ids), cls.MGRS_REQUIRED))
+            cls.skipTest(
+                "Only have {0} manager daemons, {1} are required".format(
+                    len(cls.mgr_cluster.mgr_ids), cls.MGRS_REQUIRED))
 
         cls.setup_mgrs()
 

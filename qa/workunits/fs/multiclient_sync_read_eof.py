@@ -2,8 +2,6 @@
 
 import argparse
 import os
-import sys
-import time
 
 def main():
     parser = argparse.ArgumentParser()
@@ -19,24 +17,24 @@ def main():
     f1.write('foo')
     f1.flush()
     a = f2.read(3)
-    print(('got "%s"' % a))
+    print('got "%s"' % a)
     assert a == 'foo'
     f2.write('bar')
     f2.flush()
     a = f1.read(3)
-    print(('got "%s"' % a))
+    print('got "%s"' % a)
     assert a == 'bar'
 
     ## test short reads
     f1.write('short')
     f1.flush()
     a = f2.read(100)
-    print(('got "%s"' % a))
+    print('got "%s"' % a)
     assert a == 'short'
     f2.write('longer')
     f2.flush()
     a = f1.read(1000)
-    print(('got "%s"' % a))
+    print('got "%s"' % a)
     assert a == 'longer'
 
     print('ok')

@@ -1,18 +1,18 @@
 #!/usr/bin/python
 
-import json
+from __future__ import print_function
+
 import subprocess
 import shlex
-from io import StringIO
 import errno
 import sys
 import os
 import io
 import re
 
+import six
 
-import rados
-from ceph_argparse import *
+from ceph_argparse import * # noqa
 
 keyring_base = '/tmp/cephtest-caps.keyring'
 
@@ -21,7 +21,7 @@ class UnexpectedReturn(Exception):
     if isinstance(cmd, list):
       self.cmd = ' '.join(cmd)
     else:
-      assert isinstance(cmd, str) or isinstance(cmd, str), \
+      assert isinstance(cmd, str) or isinstance(cmd, six.text_type), \
           'cmd needs to be either a list or a str'
       self.cmd = cmd
     self.cmd = str(self.cmd)
@@ -36,7 +36,7 @@ class UnexpectedReturn(Exception):
 def call(cmd):
   if isinstance(cmd, list):
     args = cmd
-  elif isinstance(cmd, str) or isinstance(cmd, str):
+  elif isinstance(cmd, str) or isinstance(cmd, six.text_type):
     args = shlex.split(cmd)
   else:
     assert False, 'cmd is not a string/unicode nor a list!'
@@ -52,7 +52,8 @@ def expect(cmd, expected_ret):
   try:
     (r, p) = call(cmd)
   except ValueError as e:
-    print('unable to run {c}: {err}'.format(c=repr(cmd), err=e.message), file=sys.stderr)
+    print('unable to run {c}: {err}'.format(c=repr(cmd), err=e.message),
+          file=sys.stderr)
     return errno.EINVAL
 
   assert r == p.returncode, \
@@ -71,7 +72,7 @@ def expect_to_file(cmd, expected_ret, out_file, mode='a'):
       'expected result doesn\'t match and no exception was thrown!'
 
   with io.open(out_file, mode) as file:
-    file.write(str(p.stdout.read()))
+    file.write(six.text_type(p.stdout.read()))
 
   return p
 
@@ -85,7 +86,7 @@ class Command:
     self.args = []
     for s in j['sig']:
       if not isinstance(s, dict):
-        assert isinstance(s, str) or isinstance(s,str), \
+        assert isinstance(s, str) or isinstance(s,six.text_type), \
             'malformatted signature cid {0}: {1}\n{2}'.format(cid,s,j)
         if len(self.sig) > 0:
           self.sig += ' '
