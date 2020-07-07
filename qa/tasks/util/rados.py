@@ -4,6 +4,7 @@ from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
 
+
 def rados(ctx, remote, cmd, wait=True, check_status=False):
     testdir = teuthology.get_testdir(ctx)
     log.info("rados %s" % ' '.join(cmd))
@@ -58,12 +59,12 @@ def cmd_erasure_code_profile(profile_name, profile):
     """
     Return the shell command to run to create the erasure code profile
     described by the profile parameter.
-    
+
     :param profile_name: a string matching [A-Za-z0-9-_.]+
     :param profile: a map whose semantic depends on the erasure code plugin
     :returns: a shell command as an array suitable for Remote.run
 
-    If profile is {}, it is replaced with 
+    If profile is {}, it is replaced with
 
       { 'k': '2', 'm': '1', 'crush-failure-domain': 'osd'}
 

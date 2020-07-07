@@ -1,3 +1,4 @@
+from io import BytesIO
 from io import StringIO
 import json
 import time
@@ -27,11 +28,13 @@ class FuseMount(CephFSMount):
         self.inst = None
         self.addr = None
 
-    def mount(self, mount_path=None, mount_fs_name=None):
+    def mount(self, mount_path=None, mount_fs_name=None, mountpoint=None, mount_options=[]):
+        if mountpoint is not None:
+            self.mountpoint = mountpoint
         self.setupfs(name=mount_fs_name)
 
         try:
-            return self._mount(mount_path, mount_fs_name)
+            return self._mount(mount_path, mount_fs_name, mount_options)
         except RuntimeError:
             # Catch exceptions by the mount() logic (i.e. not remote command
             # failures) and ensure the mount is not left half-up.
@@ -41,7 +44,7 @@ class FuseMount(CephFSMount):
             self.umount_wait(force=True)
             raise
 
-    def _mount(self, mount_path, mount_fs_name):
+    def _mount(self, mount_path, mount_fs_name, mount_options):
         log.info("Client client.%s config is %s" % (self.client_id, self.client_config))
 
         daemon_signal = 'kill'
@@ -51,14 +54,8 @@ class FuseMount(CephFSMount):
         log.info('Mounting ceph-fuse client.{id} at {remote} {mnt}...'.format(
             id=self.client_id, remote=self.client_remote, mnt=self.mountpoint))
 
-        self.client_remote.run(
-            args=[
-                'mkdir',
-                '--',
-                self.mountpoint,
-            ],
-            timeout=(15*60)
-        )
+        self.client_remote.run(args=['mkdir', '-p', self.mountpoint],
+                               timeout=(15*60), cwd=self.test_dir)
 
         run_cmd = [
             'sudo',
@@ -75,7 +72,9 @@ class FuseMount(CephFSMount):
             fuse_cmd += ["--client_mountpoint={0}".format(mount_path)]
 
         if mount_fs_name is not None:
-            fuse_cmd += ["--client_mds_namespace={0}".format(mount_fs_name)]
+            fuse_cmd += ["--client_fs={0}".format(mount_fs_name)]
+
+        fuse_cmd += mount_options
 
         fuse_cmd += [
             '--name', 'client.{id}'.format(id=self.client_id),
@@ -83,6 +82,7 @@ class FuseMount(CephFSMount):
             self.mountpoint,
         ]
 
+        cwd = self.test_dir
         if self.client_config.get('valgrind') is not None:
             run_cmd = misc.get_valgrind_args(
                 self.test_dir,
@@ -90,17 +90,23 @@ class FuseMount(CephFSMount):
                 run_cmd,
                 self.client_config.get('valgrind'),
             )
+            cwd = None # misc.get_valgrind_args chdir for us
 
         run_cmd.extend(fuse_cmd)
 
         def list_connections():
+            from teuthology.misc import get_system_type
+
+            conn_dir = "/sys/fs/fuse/connections"
+
+            self.client_remote.run(args=['sudo', 'modprobe', 'fuse'],
+                                   check_status=False)
             self.client_remote.run(
-                args=["sudo", "mount", "-t", "fusectl", "/sys/fs/fuse/connections", "/sys/fs/fuse/connections"],
-                check_status=False,
-                timeout=(15*60)
-            )
+                args=["sudo", "mount", "-t", "fusectl", conn_dir, conn_dir],
+                check_status=False, timeout=(30))
+
             try:
-                ls_str = self.client_remote.sh("ls /sys/fs/fuse/connections",
+                ls_str = self.client_remote.sh("ls " + conn_dir,
                                                stdout=StringIO(),
                                                timeout=(15*60)).strip()
             except CommandFailedError:
@@ -118,6 +124,7 @@ class FuseMount(CephFSMount):
 
         proc = self.client_remote.run(
             args=run_cmd,
+            cwd=cwd,
             logger=log.getChild('ceph-fuse.{id}'.format(id=self.client_id)),
             stdin=run.PIPE,
             wait=False,
@@ -186,15 +193,16 @@ class FuseMount(CephFSMount):
                 '--',
                 self.mountpoint,
             ],
-            stdout=StringIO(),
-            stderr=StringIO(),
+            cwd=self.test_dir,
+            stdout=BytesIO(),
+            stderr=BytesIO(),
             wait=False,
             timeout=(15*60)
         )
         try:
             proc.wait()
         except CommandFailedError:
-            error = proc.stderr.getvalue()
+            error = six.ensure_str(proc.stderr.getvalue())
             if ("endpoint is not connected" in error
             or "Software caused connection abort" in error):
                 # This happens is fuse is killed without unmount
@@ -230,19 +238,22 @@ class FuseMount(CephFSMount):
         # Now that we're mounted, set permissions so that the rest of the test will have
         # unrestricted access to the filesystem mount.
         try:
-            stderr = StringIO()
-            self.client_remote.run(args=['sudo', 'chmod', '1777', self.mountpoint], timeout=(15*60), stderr=stderr)
+            stderr = BytesIO()
+            self.client_remote.run(args=['sudo', 'chmod', '1777', self.mountpoint], timeout=(15*60), cwd=self.test_dir, stderr=stderr)
         except run.CommandFailedError:
             stderr = stderr.getvalue()
-            if "Read-only file system".lower() in stderr.lower():
+            if b"Read-only file system".lower() in stderr.lower():
                 pass
             else:
                 raise
 
     def _mountpoint_exists(self):
-        return self.client_remote.run(args=["ls", "-d", self.mountpoint], check_status=False, timeout=(15*60)).exitstatus == 0
+        return self.client_remote.run(args=["ls", "-d", self.mountpoint], check_status=False, cwd=self.test_dir, timeout=(15*60)).exitstatus == 0
 
     def umount(self):
+        if not self.is_mounted():
+            return
+
         try:
             log.info('Running fusermount -u on {name}...'.format(name=self.client_remote.name))
             self.client_remote.run(
@@ -252,6 +263,7 @@ class FuseMount(CephFSMount):
                     '-u',
                     self.mountpoint,
                 ],
+                cwd=self.test_dir,
                 timeout=(30*60),
             )
         except run.CommandFailedError:
@@ -276,7 +288,7 @@ class FuseMount(CephFSMount):
                 """).format(self._fuse_conn))
                 self._fuse_conn = None
 
-            stderr = StringIO()
+            stderr = BytesIO()
             try:
                 # make sure its unmounted
                 self.client_remote.run(
@@ -304,6 +316,12 @@ class FuseMount(CephFSMount):
         """
         :param force: Complete cleanly even if the MDS is offline
         """
+        if not (self.is_mounted() and self.fuse_daemon):
+            log.debug('ceph-fuse client.{id} is not mounted at {remote} {mnt}'.format(id=self.client_id,
+                                                                                      remote=self.client_remote,
+                                                                                      mnt=self.mountpoint))
+            return
+
         if force:
             assert not require_clean  # mutually exclusive
 
@@ -319,9 +337,8 @@ class FuseMount(CephFSMount):
         self.umount()
 
         try:
-            if self.fuse_daemon:
-                # Permit a timeout, so that we do not block forever
-                run.wait([self.fuse_daemon], timeout)
+            # Permit a timeout, so that we do not block forever
+            run.wait([self.fuse_daemon], timeout)
         except MaxWhileTries:
             log.error("process failed to terminate after unmount. This probably"
                       " indicates a bug within ceph-fuse.")
@@ -338,7 +355,7 @@ class FuseMount(CephFSMount):
 
         Prerequisite: the client is not mounted.
         """
-        stderr = StringIO()
+        stderr = BytesIO()
         try:
             self.client_remote.run(
                 args=[
@@ -346,11 +363,13 @@ class FuseMount(CephFSMount):
                     '--',
                     self.mountpoint,
                 ],
+                cwd=self.test_dir,
                 stderr=stderr,
-                timeout=(60*5)
+                timeout=(60*5),
+                check_status=False,
             )
         except CommandFailedError:
-            if "No such file or directory" in stderr.getvalue():
+            if b"No such file or directory" in stderr.getvalue():
                 pass
             else:
                 raise
@@ -396,6 +415,7 @@ class FuseMount(CephFSMount):
                 '-rf',
                 self.mountpoint,
             ],
+            cwd=self.test_dir,
             timeout=(60*5)
         )
 

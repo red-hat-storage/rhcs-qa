@@ -17,63 +17,37 @@ UMOUNT_TIMEOUT = 300
 
 
 class KernelMount(CephFSMount):
-    def __init__(self, ctx, mons, test_dir, client_id, client_remote,
+    def __init__(self, ctx, test_dir, client_id, client_remote,
                  ipmi_user, ipmi_password, ipmi_domain):
         super(KernelMount, self).__init__(ctx, test_dir, client_id, client_remote)
-        self.mons = mons
 
         self.mounted = False
         self.ipmi_user = ipmi_user
         self.ipmi_password = ipmi_password
         self.ipmi_domain = ipmi_domain
 
-    def write_secret_file(self, remote, role, keyring, filename):
-        """
-        Stash the keyring in the filename specified.
-        """
-        remote.run(
-            args=[
-                'adjust-ulimits',
-                'ceph-coverage',
-                '{tdir}/archive/coverage'.format(tdir=self.test_dir),
-                'ceph-authtool',
-                '--name={role}'.format(role=role),
-                '--print-key',
-                keyring,
-                run.Raw('>'),
-                filename,
-            ],
-            timeout=(5*60),
-        )
-
-    def mount(self, mount_path=None, mount_fs_name=None):
+    def mount(self, mount_path=None, mount_fs_name=None, mountpoint=None, mount_options=[]):
+        if mountpoint is not None:
+            self.mountpoint = mountpoint
         self.setupfs(name=mount_fs_name)
 
         log.info('Mounting kclient client.{id} at {remote} {mnt}...'.format(
             id=self.client_id, remote=self.client_remote, mnt=self.mountpoint))
 
-        keyring = self.get_keyring_path()
-        secret = '{tdir}/ceph.data/client.{id}.secret'.format(tdir=self.test_dir, id=self.client_id)
-        self.write_secret_file(self.client_remote, 'client.{id}'.format(id=self.client_id),
-                               keyring, secret)
-
-        self.client_remote.run(
-            args=[
-                'mkdir',
-                '--',
-                self.mountpoint,
-            ],
-            timeout=(5*60),
-        )
+        self.client_remote.run(args=['mkdir', '-p', self.mountpoint],
+                               timeout=(5*60))
 
         if mount_path is None:
             mount_path = "/"
 
-        opts = 'name={id},secretfile={secret},norequire_active_mds'.format(id=self.client_id,
-                                                      secret=secret)
+        opts = 'name={id},norequire_active_mds,conf={conf}'.format(id=self.client_id,
+                                                        conf=self.config_path)
 
         if mount_fs_name is not None:
             opts += ",mds_namespace={0}".format(mount_fs_name)
+
+        for mount_opt in mount_options :
+            opts += ",{0}".format(mount_opt)
 
         self.client_remote.run(
             args=[
@@ -81,8 +55,10 @@ class KernelMount(CephFSMount):
                 'adjust-ulimits',
                 'ceph-coverage',
                 '{tdir}/archive/coverage'.format(tdir=self.test_dir),
-                '/sbin/mount.ceph',
-                '{mons}:{mount_path}'.format(mons=','.join(self.mons), mount_path=mount_path),
+                '/bin/mount',
+                '-t',
+                'ceph',
+                ':{mount_path}'.format(mount_path=mount_path),
                 self.mountpoint,
                 '-v',
                 '-o',
@@ -97,6 +73,9 @@ class KernelMount(CephFSMount):
         self.mounted = True
 
     def umount(self, force=False):
+        if not self.is_mounted():
+            return
+
         log.debug('Unmounting client client.{id}...'.format(id=self.client_id))
 
         cmd=['sudo', 'umount', self.mountpoint]
@@ -176,7 +155,7 @@ class KernelMount(CephFSMount):
                                                 self.ipmi_user,
                                                 self.ipmi_password,
                                                 self.ipmi_domain)
-        con.power_off()
+        con.hard_reset(wait_for_login=False)
 
         self.mounted = False
 
@@ -210,6 +189,7 @@ class KernelMount(CephFSMount):
                 self.mountpoint,
             ],
             timeout=(5*60),
+            check_status=False,
         )
 
     def _find_debug_dir(self):
