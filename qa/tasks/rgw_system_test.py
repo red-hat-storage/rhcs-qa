@@ -104,7 +104,7 @@ def task(ctx, config):
                 'cd',
                 '%s' % test_root_dir,
                 run.Raw(';'),
-                run.Raw('pip3 install  --upgrade -r ceph-qe-scripts/rgw/requirements.txt'),
+                run.Raw('pip install  --upgrade -r ceph-qe-scripts/rgw/requirements.txt'),
                 run.Raw(';'),
                 'deactivate'])
 
