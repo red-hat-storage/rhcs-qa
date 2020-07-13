@@ -2,7 +2,7 @@ tasks:
   - ssh-keys: null
   - rhceph_ansible: null
   - rgw-system-test:
-      test: swift stat command verification
+      test: swift_stat_command_verification
       script: swift_stats.py
       clients: ['client.0']
       config:
