@@ -4,12 +4,12 @@ import json
 import logging
 import random
 import string
-from cStringIO import StringIO
+from io import StringIO
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from requests.packages.urllib3 import PoolManager
 from requests.packages.urllib3.util import Retry
-import ConfigParser
+import configparser
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def rgwadmin(ctx, client, cmd, stdin=StringIO(), check_status=False,
            ]
     pre.extend(cmd)
     log.log(log_level, 'rgwadmin: cmd=%s' % pre)
-    (remote,) = ctx.cluster.only(client).remotes.iterkeys()
+    (remote,) = iter(ctx.cluster.only(client).remotes.keys())
     proc = remote.run(
         args=pre,
         check_status=check_status,
@@ -56,17 +56,17 @@ def extract_endpoints(ctx, roles):
     port = 8080
     url_endpoint = {}
 
-    if isinstance(roles, basestring):
+    if isinstance(roles, str):
         roles = [roles]
 
     for role in roles:
-        remote,  = ctx.cluster.only(role).remotes.iterkeys()
+        remote,  = iter(ctx.cluster.only(role).remotes.keys())
         url_endpoint[role] = (remote.name.split('@')[1], port)
 
     log.info('Endpoints are {}'.format(url_endpoint))
 
     url = ''
-    for machine, (host, port) in url_endpoint.iteritems():
+    for machine, (host, port) in url_endpoint.items():
         url = url + 'http://{host}:{port}'.format(host=host, port=port) + ','
     url = url[:-1]
 
@@ -103,18 +103,18 @@ def zone_to_conf(ctx, hosts, zone_name):
     """
     Add zone entry in ceph conf file
     """
-    parser = ConfigParser.ConfigParser()
+    parser = configparser.ConfigParser()
 
     for host in hosts:
         cluster_name, _, _ = teuthology.split_role(host)
-        (remote,) = ctx.cluster.only(host).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(host).remotes.keys())
         conf_path = '/etc/ceph/ceph.conf'
         conf_file = remote.get_file(conf_path, '/tmp')
         config_section = 'client.rgw.{}'.format(remote.shortname)
         parser.read(conf_file)
         if not parser.has_section(config_section):
             log.info('RGW might not be installed')
-            raise ConfigParser.NoSectionError
+            raise configparser.NoSectionError
         else:
             parser.set(config_section, 'rgw_zone', zone_name)
 
@@ -264,7 +264,7 @@ def restart_rgw(ctx, role):
 
     log.info('Restarting rgw...')
     log.debug('client %r', role)
-    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+    (remote,) = iter(ctx.cluster.only(role).remotes.keys())
     hostname = remote.name.split('@')[1].split('.')[0]
     rgw_cmd = [
         'sudo', 'systemctl', 'restart', 'ceph-radosgw.target']
@@ -435,7 +435,7 @@ def addzone(ctx, config):
     master_zonegroup = None
 
     roles = config.get('endpoints')
-    if isinstance(roles, basestring):
+    if isinstance(roles, str):
         roles = [roles]
     zone_name = config.get('name')
 

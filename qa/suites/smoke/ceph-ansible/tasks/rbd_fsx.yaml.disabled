@@ -6,8 +6,8 @@ overrides:
             rbd default data pool: datapool
 tasks:
 - ssh-keys:
-- rhceph_ansible:
 - install.ship_utilities:
+- rhceph_ansible:
 - exec:
     client.0:
       - sudo ceph osd pool create datapool 4

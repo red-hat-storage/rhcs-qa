@@ -7,7 +7,7 @@ from teuthology.orchestra import run
 log = logging.getLogger(__name__)
 import os
 import pwd
-import cStringIO
+import io
 import time
 
 log = logging.getLogger(__name__)
@@ -61,12 +61,12 @@ def task(ctx, config):
     cleanup = lambda x: remote.run(args=[run.Raw('sudo rm -rf %s' % x)])
     log.info('listing all clients: %s' % config.get('clients'))
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, basestring)
+        assert isinstance(role, str)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
-        map(cleanup, soot)
+        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
+        list(map(cleanup, soot))
         remote.run(args=['mkdir', test_root_dir])
         log.info('cloning the repo to %s' % remote.hostname)
         remote.run(
@@ -117,7 +117,7 @@ def task(ctx, config):
         yield
     finally:
         for role in config.get('clients', ['client.0']):
-            (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+            (remote,) = iter(ctx.cluster.only(role).remotes.keys())
             log.info('Test completed')
             log.info("Deleting leftovers")
-            map(cleanup, soot)
+            list(map(cleanup, soot))

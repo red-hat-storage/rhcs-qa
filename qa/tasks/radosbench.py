@@ -7,6 +7,8 @@ import logging
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 
+import six
+
 log = logging.getLogger(__name__)
 
 @contextlib.contextmanager
@@ -52,11 +54,11 @@ def task(ctx, config):
 
     create_pool = config.get('create_pool', True)
     for role in config.get('clients', ['client.0']):
-        assert isinstance(role, basestring)
+        assert isinstance(role, six.string_types)
         PREFIX = 'client.'
         assert role.startswith(PREFIX)
         id_ = role[len(PREFIX):]
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+        (remote,) = ctx.cluster.only(role).remotes.keys()
 
         if config.get('ec_pool', False):
             profile = config.get('erasure_code_profile', {})
@@ -129,7 +131,7 @@ def task(ctx, config):
     finally:
         timeout = config.get('time', 360) * 30 + 300
         log.info('joining radosbench (timing out after %ss)', timeout)
-        run.wait(radosbench.itervalues(), timeout=timeout)
+        run.wait(radosbench.values(), timeout=timeout)
 
-        if pool is not 'data' and create_pool:
+        if pool != 'data' and create_pool:
             manager.remove_pool(pool)

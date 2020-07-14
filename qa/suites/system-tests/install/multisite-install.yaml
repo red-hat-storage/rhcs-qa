@@ -4,6 +4,7 @@ overrides:
       rgw_multisite: true
 tasks:
 - ssh-keys: null
+- install.ship_utilities:
 - rhceph_ansible:
     cluster: c1
     vars:

@@ -1,11 +1,11 @@
 import json
 import logging
-import time
 import os
 from textwrap import dedent
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from tasks.cephfs.fuse_mount import FuseMount
 from teuthology.exceptions import CommandFailedError
+from teuthology.misc import sudo_write_file
 
 log = logging.getLogger(__name__)
 
@@ -564,7 +564,7 @@ vc.disconnect()
 
         group_id = "grpid"
         # Use a unicode volume ID (like Manila), to reproduce #15266
-        volume_id = u"volid"
+        volume_id = "volid"
 
         # Create
         mount_path = self._volume_client_python(self.mount_b, dedent("""
@@ -580,7 +580,7 @@ vc.disconnect()
         mount_path = mount_path[1:]
 
         # A file with non-ascii characters
-        self.mount_a.run_shell(["touch", os.path.join(mount_path, u"b\u00F6b")])
+        self.mount_a.run_shell(["touch", os.path.join(mount_path, "b\u00F6b")])
 
         # A file with no permissions to do anything
         self.mount_a.run_shell(["touch", os.path.join(mount_path, "noperms")])
@@ -708,7 +708,7 @@ vc.disconnect()
         if self.py_version == 'python3':
             expected_result = [('guest1', 'rw'), ('guest2', 'r')]
         else:
-            expected_result = [(u'guest1', u'rw'), (u'guest2', u'r')]
+            expected_result = [('guest1', 'rw'), ('guest2', 'r')]
 
         self.assertItemsEqual(str(expected_result), auths)
 

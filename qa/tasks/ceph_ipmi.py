@@ -4,7 +4,7 @@ Task to power on/off or powercycle nodes
 import logging
 import contextlib
 from teuthology import misc as teuthology
-from cStringIO import StringIO
+from io import StringIO
 from teuthology.orchestra import run
 from teuthology.contextutil import safe_while
 from teuthology.orchestra import remote as orchestra_remote
@@ -62,11 +62,11 @@ def poweroff(ctx, config):
         config = {}
     elif isinstance(config, list):
         config = dict((role, None) for role in config)
-    roles = config.keys()
+    roles = list(config.keys())
     last_remote = []
 
     for role in roles:
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
         cluster_name, _, _ = teuthology.split_role(role)
         if remote not in last_remote:
             log.info("Powering off host containing %s" % role)
@@ -98,11 +98,11 @@ def poweron(ctx, config):
         config = {}
     elif isinstance(config, list):
         config = dict((role, None) for role in config)
-    roles = config.keys()
+    roles = list(config.keys())
     last_remote = []
 
     for role in roles:
-        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+        (remote,) = iter(ctx.cluster.only(role).remotes.keys())
         cluster_name, _, _ = teuthology.split_role(role)
         if remote not in last_remote:
             log.info("Powering on host containing %s" % role)
