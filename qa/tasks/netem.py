@@ -6,6 +6,10 @@ Reference:https://wiki.linuxfoundation.org/networking/netem.
 
 import logging
 import contextlib
+from teuthology import misc as teuthology
+from cStringIO import StringIO
+from teuthology.orchestra import run
+from teuthology import contextutil
 from paramiko import SSHException
 import socket
 import time
@@ -58,8 +62,8 @@ def static_delay(remote, host, interface, delay):
 
     ip = socket.gethostbyname(host.hostname)
 
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') == -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') == -1:
         # call set_priority() func to create priority queue
         # if not already created(indicated by -1)
         log.info('Create priority queue')
@@ -93,8 +97,8 @@ def variable_delay(remote, host, interface, delay_range=[]):
     delay1 = delay_range[0]
     delay2 = delay_range[1]
 
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') == -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') == -1:
         # call set_priority() func to create priority queue
         # if not already created(indicated by -1)
         remote.run(args=set_priority(interface))
@@ -120,8 +124,8 @@ def delete_dev(remote, interface):
     """ Delete the qdisc if present"""
 
     log.info('Delete tc')
-    tc = remote.sh(show_tc(interface))
-    if tc.strip().find('refcnt') != -1:
+    r = remote.run(args=show_tc(interface), stdout=StringIO())
+    if r.stdout.getvalue().strip().find('refcnt') != -1:
         remote.run(args=del_tc(interface))
 
 
@@ -143,8 +147,8 @@ class Toggle:
 
         _, _, set_ip = cmd_prefix(self.interface)
 
-        tc = self.remote.sh(show_tc(self.interface))
-        if tc.strip().find('refcnt') == -1:
+        r = self.remote.run(args=show_tc(self.interface), stdout=StringIO())
+        if r.stdout.getvalue().strip().find('refcnt') == -1:
             self.remote.run(args=set_priority(self.interface))
             # packet drop to specific ip
             log.info('Drop all packets to %s' % self.host)
@@ -164,7 +168,7 @@ class Toggle:
             try:
                 self.packet_drop()
                 log.info('link down')
-            except SSHException:
+            except SSHException as e:
                 log.debug('Failed to run command')
 
             self.stop_event.wait(timeout=self.interval)
@@ -172,7 +176,7 @@ class Toggle:
             try:
                 delete_dev(self.remote, self.interface)
                 log.info('link up')
-            except SSHException:
+            except SSHException as e:
                 log.debug('Failed to run command')
 
     def begin(self, gname):
@@ -234,10 +238,10 @@ def task(ctx, config):
 
     if config.get('dst_client') is not None:
         dst = config.get('dst_client')
-        (host,) = ctx.cluster.only(dst).remotes.keys()
+        (host,) = ctx.cluster.only(dst).remotes.iterkeys()
 
     for role in config.get('clients', None):
-        (remote,) = ctx.cluster.only(role).remotes.keys()
+        (remote,) = ctx.cluster.only(role).remotes.iterkeys()
         ctx.netem.remote = remote
         if config.get('delay', False):
             static_delay(remote, host, config.get('iface'), config.get('delay'))
@@ -263,6 +267,6 @@ def task(ctx, config):
         if ctx.netem.names:
             toggle.cleanup()
         for role in config.get('clients'):
-            (remote,) = ctx.cluster.only(role).remotes.keys()
+            (remote,) = ctx.cluster.only(role).remotes.iterkeys()
             delete_dev(remote, config.get('iface'))
 

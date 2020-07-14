@@ -30,6 +30,5 @@ overrides:
         dashboard_enabled: false
 tasks:
 - ssh-keys:
-- install.ship_utilities:
 - rhceph_ansible:
-
+- install.ship_utilities:

@@ -8,6 +8,7 @@ import logging
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.orchestra import run
+from teuthology.orchestra.connection import split_user
 from teuthology.packaging import install_package
 from teuthology.packaging import remove_package
 
@@ -30,8 +31,8 @@ def install_packages(ctx, config):
 	'deb': [ 'libffi-dev', 'libssl-dev', 'libldap2-dev', 'libsasl2-dev' ],
 	'rpm': [ 'libffi-devel', 'openssl-devel' ],
     }
-    for (client, _) in list(config.items()):
-        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+    for (client, _) in config.items():
+        (remote,) = ctx.cluster.only(client).remotes.iterkeys()
         for dep in deps[remote.os.package_type]:
             install_package(dep, remote)
     try:
@@ -39,8 +40,8 @@ def install_packages(ctx, config):
     finally:
         log.info('Removing packaged dependencies of Keystone...')
 
-        for (client, _) in list(config.items()):
-            (remote,) = iter(ctx.cluster.only(client).remotes.keys())
+        for (client, _) in config.items():
+            (remote,) = ctx.cluster.only(client).remotes.iterkeys()
             for dep in deps[remote.os.package_type]:
                 remove_package(dep, remote)
 
@@ -122,7 +123,7 @@ def setup_venv(ctx, config):
     for (client, _) in config.items():
         run_in_keystone_dir(ctx, client,
             [   'source',
-                '{tvdir}/bin/activate'.format(tvdir=get_toxvenv_dir(ctx)),
+		'{tvdir}/bin/activate'.format(tvdir=get_toxvenv_dir(ctx)),
                 run.Raw('&&'),
                 'tox', '-e', 'venv', '--notest'
             ])
@@ -132,7 +133,7 @@ def setup_venv(ctx, config):
     try:
         yield
     finally:
-        pass
+	pass
 
 @contextlib.contextmanager
 def configure_instance(ctx, config):
@@ -175,7 +176,7 @@ def run_keystone(ctx, config):
     log.info('Configuring keystone...')
 
     for (client, _) in config.items():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
+        (remote,) = ctx.cluster.only(client).remotes.iterkeys()
         cluster_name, _, client_id = teuthology.split_role(client)
 
         # start the public endpoint
@@ -269,7 +270,7 @@ def run_section_cmds(ctx, cclient, section_cmd, special,
     for section_item in section_config_list:
         run_in_keystone_venv(ctx, cclient,
             [ 'openstack' ] + section_cmd.split() +
-            dict_to_args(special, auth_section + list(section_item.items())))
+            dict_to_args(special, auth_section + section_item.items()))
 
 def create_endpoint(ctx, cclient, service, url):
     endpoint_section = {
@@ -316,7 +317,7 @@ def assign_ports(ctx, config, initial_port):
     """
     port = initial_port
     role_endpoints = {}
-    for remote, roles_for_host in ctx.cluster.remotes.items():
+    for remote, roles_for_host in ctx.cluster.remotes.iteritems():
         for role in roles_for_host:
             if role in config:
                 role_endpoints[role] = (remote.name.split('@')[1], port)

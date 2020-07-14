@@ -1,6 +1,6 @@
 
 
-from .mgr_test_case import MgrTestCase
+from mgr_test_case import MgrTestCase
 
 import json
 import logging
@@ -45,13 +45,13 @@ class TestCrash(MgrTestCase):
         self.oldest_crashid = crash_id
 
     def tearDown(self):
-        for crash in self.crashes.values():
+        for crash in self.crashes.itervalues():
             self.mgr_cluster.mon_manager.raw_cluster_cmd_result(
                 'crash', 'rm', crash['crash_id']
             )
 
     def test_info(self):
-        for crash in self.crashes.values():
+        for crash in self.crashes.itervalues():
             log.warning('test_info: crash %s' % crash)
             retstr = self.mgr_cluster.mon_manager.raw_cluster_cmd(
                 'crash', 'ls'
@@ -69,11 +69,11 @@ class TestCrash(MgrTestCase):
         retstr = self.mgr_cluster.mon_manager.raw_cluster_cmd(
             'crash', 'ls',
         )
-        for crash in self.crashes.values():
+        for crash in self.crashes.itervalues():
             self.assertIn(crash['crash_id'], retstr)
 
     def test_rm(self):
-        crashid = list(self.crashes.keys())[0]
+        crashid = self.crashes.keys()[0]
         self.assertEqual(
             0,
             self.mgr_cluster.mon_manager.raw_cluster_cmd_result(

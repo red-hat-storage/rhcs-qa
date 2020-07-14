@@ -2,9 +2,12 @@
 Test CephFS scrub (distinct from OSD scrub) functionality
 """
 import logging
+import os
+import traceback
 from collections import namedtuple
 
-from tasks.cephfs.cephfs_test_case import CephFSTestCase
+from teuthology.orchestra.run import CommandFailedError
+from tasks.cephfs.cephfs_test_case import CephFSTestCase, for_teuthology
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +16,6 @@ ValidationError = namedtuple("ValidationError", ["exception", "backtrace"])
 
 class Workload(CephFSTestCase):
     def __init__(self, filesystem, mount):
-        super().__init__()
         self._mount = mount
         self._filesystem = filesystem
         self._initial_state = None
@@ -109,9 +111,6 @@ class DupInodeWorkload(Workload):
 
 class TestScrub(CephFSTestCase):
     MDSS_REQUIRED = 1
-
-    def setUp(self):
-        super().setUp()
 
     def _scrub(self, workload, workers=1):
         """

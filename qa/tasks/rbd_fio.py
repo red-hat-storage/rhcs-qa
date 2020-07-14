@@ -9,6 +9,7 @@ import contextlib
 import json
 import logging
 import os
+import StringIO
 
 from teuthology.parallel import parallel
 from teuthology import misc as teuthology
@@ -51,7 +52,7 @@ or
         client_config = config['all']
     clients = ctx.cluster.only(teuthology.is_type('client'))
     rbd_test_dir = teuthology.get_testdir(ctx) + "/rbd_fio_test"
-    for remote,role in clients.remotes.items():
+    for remote,role in clients.remotes.iteritems():
         if 'client_config' in locals():
            with parallel() as p:
                p.spawn(run_fio, remote, client_config, rbd_test_dir)
@@ -76,8 +77,10 @@ def get_ioengine_package_name(ioengine, remote):
 
 def run_rbd_map(remote, image, iodepth):
     iodepth = max(iodepth, 128)  # RBD_QUEUE_DEPTH_DEFAULT
-    dev = remote.sh(['sudo', 'rbd', 'device', 'map', '-o',
-                     'queue_depth={}'.format(iodepth), image]).rstrip('\n')
+    out = StringIO.StringIO()
+    remote.run(args=['sudo', 'rbd', 'device', 'map', '-o',
+                     'queue_depth={}'.format(iodepth), image], stdout=out)
+    dev = out.getvalue().rstrip('\n')
     teuthology.sudo_write_file(
         remote,
         '/sys/block/{}/queue/nr_requests'.format(os.path.basename(dev)),
@@ -91,7 +94,7 @@ def run_fio(remote, config, rbd_test_dir):
     get the fio from github, generate binary, and use it to run on
     the generated fio config file
     """
-    fio_config=NamedTemporaryFile(mode='w', prefix='fio_rbd_', dir='/tmp/', delete=False)
+    fio_config=NamedTemporaryFile(prefix='fio_rbd_', dir='/tmp/', delete=False)
     fio_config.write('[global]\n')
     if config.get('io-engine'):
         ioengine=config['io-engine']
@@ -211,8 +214,9 @@ def run_fio(remote, config, rbd_test_dir):
         remote.run(args=['sudo', run.Raw('{tdir}/fio-fio-{v}/fio {f}'.format(tdir=rbd_test_dir,v=fio_version,f=fio_config.name))])
         remote.run(args=['ceph', '-s'])
     finally:
-        out = remote.sh('rbd device list --format=json')
-        mapped_images = json.loads(out)
+        out=StringIO.StringIO()
+        remote.run(args=['rbd', 'device', 'list', '--format=json'], stdout=out)
+        mapped_images = json.loads(out.getvalue())
         if mapped_images:
             log.info("Unmapping rbd images on {sn}".format(sn=sn))
             for image in mapped_images:

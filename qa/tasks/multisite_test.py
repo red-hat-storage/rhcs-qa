@@ -50,9 +50,9 @@ def get_remotes(ctx):
     rgws = ctx.cluster.only(teuthology.is_type('rgw'))
     haproxys = ctx.cluster.only(teuthology.is_type('haproxy'))
     remotes = []
-    for remote, roles_for_host in rgws.remotes.items():
+    for remote, roles_for_host in rgws.remotes.iteritems():
         remotes.append(remote)
-    for remote, roles_for_host in haproxys.remotes.items():
+    for remote, roles_for_host in haproxys.remotes.iteritems():
         remotes.append(remote)
 
     return remotes
@@ -189,7 +189,7 @@ def cleanup(ctx):
         soot = ['venv', 'rgw-tests', '*.json', 'Download.*', 'Download', '*.mpFile', 'x*', 'key.*', 'Mp.*',
                 '*.key.*', 'user_details', 'io_info.yaml']
 
-        list(map(cleanup, soot))
+        map(cleanup, soot)
 
 
 def clone_repo(ctx):
@@ -252,7 +252,7 @@ def userexec(ctx, config):
     clone_repo(ctx)
 
     master_client = config['master_client']
-    (mclient,) = iter(ctx.cluster.only(master_client).remotes.keys())
+    (mclient,) = ctx.cluster.only(master_client).remotes.iterkeys()
 
     user_config = config['master_config']
 
@@ -330,7 +330,7 @@ def task(ctx, config):
     # Target node where the tests will be run. Can be primary or secondary multisite zones.
 
     target_client = config['test_client']
-    (tclient,) = iter(ctx.cluster.only(target_client).remotes.keys())
+    (tclient,) = ctx.cluster.only(target_client).remotes.iterkeys()
 
     if not hasattr(ctx, 'multisite_test'):
         ctx.multisite_test = argparse.Namespace()

@@ -346,14 +346,14 @@ def task(ctx, config):
     log.info('cloning the repo to client machines')
 
     remotes = ctx.cluster.only(teuthology.is_type('client'))
-    for remote, roles_for_host in remotes.remotes.items():
+    for remote, roles_for_host in remotes.remotes.iteritems():
 
         cleanup = lambda x: remote.run(args=[run.Raw('sudo rm -rf %s' % x)])
 
         soot = ['venv', 'rgw-tests', '*.json', 'Download.*', 'Download', '*.mpFile', 'x*', 'key.*', 'Mp.*',
                 '*.key.*', 'user_details', 'io_info.yaml', 'io_info_2.yaml']
 
-        list(map(cleanup, soot))
+        map(cleanup, soot)
 
         remote.run(args=['mkdir', 'rgw-tests'])
         remote.run(
@@ -377,7 +377,7 @@ def task(ctx, config):
                 'deactivate'])
 
     master_client = config['master_client']
-    (mclient,) = iter(ctx.cluster.only(master_client).remotes.keys())
+    (mclient,) = ctx.cluster.only(master_client).remotes.iterkeys()
 #    master_client = 'source.client.0'
 #    (mclient,) = ctx.cluster.only(master_client).remotes.iterkeys()
 
@@ -394,7 +394,7 @@ def task(ctx, config):
     )
 
     target_client = config['target_client']
-    (tclient,) = iter(ctx.cluster.only(target_client).remotes.keys())
+    (tclient,) = ctx.cluster.only(target_client).remotes.iterkeys()
 
     test_config = config['target_config']
     data = None
@@ -627,7 +627,7 @@ def task(ctx, config):
     finally:
 
         remotes = ctx.cluster.only(teuthology.is_type('client'))
-        for remote, roles_for_host in remotes.remotes.items():
+        for remote, roles_for_host in remotes.remotes.iteritems():
 
             remote.run(
                 args=[
@@ -647,4 +647,4 @@ def task(ctx, config):
             soot = ['venv', 'rgw-tests', '*.json', 'Download.*', 'Download', '*.mpFile', 'x*', 'key.*', 'Mp.*',
                     '*.key.*', 'user_details', 'io_info.yaml', 'io_info_2.yaml']
 
-            list(map(cleanup, soot))
+            map(cleanup, soot)

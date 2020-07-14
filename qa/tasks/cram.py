@@ -4,9 +4,7 @@ Cram tests
 import logging
 import os
 
-import six
-
-from tasks.util.workunit import get_refspec_after_overrides
+from util.workunit import get_refspec_after_overrides
 
 from teuthology import misc as teuthology
 from teuthology.parallel import parallel
@@ -62,8 +60,8 @@ def task(ctx, config):
     log.info('Pulling tests from %s ref %s', git_url, refspec)
 
     try:
-        for client, tests in clients.items():
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+        for client, tests in clients.iteritems():
+            (remote,) = ctx.cluster.only(client).remotes.iterkeys()
             client_dir = '{tdir}/archive/cram.{role}'.format(tdir=testdir, role=client)
             remote.run(
                 args=[
@@ -87,11 +85,11 @@ def task(ctx, config):
                     )
 
         with parallel() as p:
-            for role in clients.keys():
+            for role in clients.iterkeys():
                 p.spawn(_run_tests, ctx, role)
     finally:
-        for client, tests in clients.items():
-            (remote,) = ctx.cluster.only(client).remotes.keys()
+        for client, tests in clients.iteritems():
+            (remote,) = ctx.cluster.only(client).remotes.iterkeys()
             client_dir = '{tdir}/archive/cram.{role}'.format(tdir=testdir, role=client)
             test_files = set([test.rsplit('/', 1)[1] for test in tests])
 
@@ -126,11 +124,11 @@ def _run_tests(ctx, role):
     :param ctx: Context
     :param role: Roles
     """
-    assert isinstance(role, six.string_types)
+    assert isinstance(role, basestring)
     PREFIX = 'client.'
     assert role.startswith(PREFIX)
     id_ = role[len(PREFIX):]
-    (remote,) = ctx.cluster.only(role).remotes.keys()
+    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
     ceph_ref = ctx.summary.get('ceph-sha1', 'master')
 
     testdir = teuthology.get_testdir(ctx)

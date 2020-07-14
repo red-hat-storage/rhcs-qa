@@ -5,12 +5,11 @@ import logging
 import json
 import time
 
-from tasks import ceph_manager
-from tasks.util.rados import rados
+import ceph_manager
 from teuthology import misc as teuthology
+from util.rados import rados
 
 log = logging.getLogger(__name__)
-
 
 def task(ctx, config):
     """
@@ -21,13 +20,13 @@ def task(ctx, config):
     assert isinstance(config, dict), \
         'peer task only accepts a dict for configuration'
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
+    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
 
     manager = ceph_manager.CephManager(
         mon,
         ctx=ctx,
         logger=log.getChild('ceph_manager'),
-    )
+        )
 
     while len(manager.get_osd_status()['up']) < 3:
         time.sleep(10)
@@ -66,7 +65,7 @@ def task(ctx, config):
     pgs = manager.get_pg_stats()
     for pg in pgs:
         out = manager.raw_cluster_cmd('pg', pg['pgid'], 'query')
-        log.debug("out string %s", out)
+	log.debug("out string %s",out)
         j = json.loads(out)
         log.info("pg is %s, query json is %s", pg, j)
 

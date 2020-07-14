@@ -28,6 +28,5 @@ overrides:
             pg_num: "64"
 tasks:
 - ssh-keys:
-- install.ship_utilities:
 - rhceph_ansible:
-
+- install.ship_utilities:

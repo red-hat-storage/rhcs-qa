@@ -4,12 +4,9 @@ Deploy and configure Tempest for Teuthology
 import contextlib
 import logging
 
-from six.moves import configparser
-
 from teuthology import misc as teuthology
 from teuthology import contextutil
-from teuthology import packaging
-from teuthology.exceptions import ConfigError
+from teuthology.config import config as teuth_config
 from teuthology.orchestra import run
 
 log = logging.getLogger(__name__)
@@ -74,26 +71,6 @@ def get_toxvenv_dir(ctx):
     return ctx.tox.venv_path
 
 @contextlib.contextmanager
-def install_python3(ctx, config):
-    assert isinstance(config, dict)
-    log.info('Installing Python3 for Tempest')
-    installed = []
-    for (client, _) in config.items():
-        (remote,) = ctx.cluster.only(client).remotes.keys()
-        try:
-            packaging.get_package_version(remote, 'python3')
-        except:
-            packaging.install_package('python3', remote)
-            installed.append(client)
-    try:
-        yield
-    finally:
-        log.info('Removing Python3 required by Tempest...')
-        for client in installed:
-            (remote,) = ctx.cluster.only(client).remotes.keys()
-            packaging.remove_package('python3', remote)
-
-@contextlib.contextmanager
 def setup_venv(ctx, config):
     """
     Setup the virtualenv for Tempest using tox.
@@ -113,12 +90,8 @@ def setup_logging(ctx, cpar):
 
 def to_config(config, params, section, cpar):
     for (k, v) in config[section].items():
-        if isinstance(v, str):
+        if (isinstance(v, str)):
             v = v.format(**params)
-        elif isinstance(v, bool):
-            v = 'true' if v else 'false'
-        else:
-            v = str(v)
         cpar.set(section, k, v)
 
 @contextlib.contextmanager
@@ -126,6 +99,7 @@ def configure_instance(ctx, config):
     assert isinstance(config, dict)
     log.info('Configuring Tempest')
 
+    import ConfigParser
     for (client, cconfig) in config.items():
         run_in_tempest_venv(ctx, client,
             [
@@ -152,14 +126,14 @@ def configure_instance(ctx, config):
             'keystone_public_port': str(public_port),
         }
 
-        cpar = configparser.ConfigParser()
+        cpar = ConfigParser.ConfigParser()
         cpar.read(local_conf)
         setup_logging(ctx, cpar)
         to_config(cconfig, params, 'auth', cpar)
         to_config(cconfig, params, 'identity', cpar)
         to_config(cconfig, params, 'object-storage', cpar)
         to_config(cconfig, params, 'object-storage-feature-enabled', cpar)
-        cpar.write(open(local_conf, 'w+'))
+        cpar.write(file(local_conf, 'w+'))
 
         remote.put_file(local_conf, tetcdir + '/tempest.conf')
     yield
@@ -264,10 +238,11 @@ def task(ctx, config):
         config = all_clients
     if isinstance(config, list):
         config = dict.fromkeys(config)
+    clients = config.keys()
 
     overrides = ctx.config.get('overrides', {})
     # merge each client section, not the top level.
-    for client in config.keys():
+    for client in config.iterkeys():
         if not config[client]:
             config[client] = {}
         teuthology.deep_merge(config[client], overrides.get('keystone', {}))
@@ -276,7 +251,6 @@ def task(ctx, config):
 
     with contextutil.nested(
         lambda: download(ctx=ctx, config=config),
-        lambda: install_python3(ctx=ctx, config=config),
         lambda: setup_venv(ctx=ctx, config=config),
         lambda: configure_instance(ctx=ctx, config=config),
         lambda: run_tempest(ctx=ctx, config=config),

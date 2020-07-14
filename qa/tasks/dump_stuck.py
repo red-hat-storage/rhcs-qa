@@ -2,9 +2,10 @@
 Dump_stuck command
 """
 import logging
+import re
 import time
 
-from tasks import ceph_manager
+import ceph_manager
 from teuthology import misc as teuthology
 
 
@@ -47,7 +48,7 @@ def task(ctx, config):
 
     timeout = 60
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
+    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
 
     manager = ceph_manager.CephManager(
         mon,

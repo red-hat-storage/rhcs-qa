@@ -3,7 +3,7 @@ Thrash -- Simulate random osd failures.
 """
 import contextlib
 import logging
-from tasks import ceph_manager
+import ceph_manager
 from teuthology import misc as teuthology
 
 
@@ -176,7 +176,7 @@ def task(ctx, config):
             for remote in ctx.cluster.remotes.keys():
                 log.debug('checking console status of %s' % remote.shortname)
                 if not remote.console.check_status():
-                    log.warning('Failed to get console status for %s',
+                    log.warn('Failed to get console status for %s',
                              remote.shortname)
 
             # check that all osd remotes have a valid console

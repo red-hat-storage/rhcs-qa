@@ -31,8 +31,8 @@ def task(ctx, config):
     clients = config.keys()
 
     # just use the first client...
-    client = next(iter(clients))
-    (remote,) = ctx.cluster.only(client).remotes.keys()
+    client = clients[0];
+    (remote,) = ctx.cluster.only(client).remotes.iterkeys()
 
     testdir = teuthology.get_testdir(ctx)
 

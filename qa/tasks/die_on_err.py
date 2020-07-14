@@ -6,7 +6,7 @@ import logging
 import time
 from teuthology.orchestra import run
 
-from tasks import ceph_manager
+import ceph_manager
 from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def task(ctx, config):
         config = {}
 
     first_mon = teuthology.get_first_mon(ctx, config)
-    (mon,) = ctx.cluster.only(first_mon).remotes.keys()
+    (mon,) = ctx.cluster.only(first_mon).remotes.iterkeys()
 
     num_osds = teuthology.num_instances_of_type(ctx.cluster, 'osd')
     log.info('num_osds is %s' % num_osds)
@@ -38,7 +38,7 @@ def task(ctx, config):
 
     while True:
         for i in range(num_osds):
-            (osd_remote,) = ctx.cluster.only('osd.%d' % i).remotes.keys()
+            (osd_remote,) = ctx.cluster.only('osd.%d' % i).remotes.iterkeys()
             p = osd_remote.run(
                 args = [ 'test', '-e', '{tdir}/err'.format(tdir=testdir) ],
                 wait=True,

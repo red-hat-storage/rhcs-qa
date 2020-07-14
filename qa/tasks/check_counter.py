@@ -4,6 +4,7 @@ import json
 
 from teuthology.task import Task
 from teuthology import misc
+import ceph_manager
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class CheckCounter(Task):
         targets = self.config.get('counters', {})
 
         if cluster_name is None:
-            cluster_name = next(iter(self.ctx.managers.keys()))
+            cluster_name = self.ctx.managers.keys()[0]
 
         for daemon_type, counters in targets.items():
             # List of 'a', 'b', 'c'...

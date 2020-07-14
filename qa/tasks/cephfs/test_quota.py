@@ -1,5 +1,5 @@
 
-from tasks.cephfs.cephfs_test_case import CephFSTestCase
+from cephfs_test_case import CephFSTestCase
 
 from teuthology.exceptions import CommandFailedError
 
