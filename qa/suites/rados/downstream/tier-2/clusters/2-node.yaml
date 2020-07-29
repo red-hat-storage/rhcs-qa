@@ -1,0 +1,10 @@
+roles:
+  - - mon.a
+    - mgr.x
+    - osd.0
+    - osd.1
+    - osd.2
+    - client.0
+  - - osd.3
+    - osd.4
+    - osd.5

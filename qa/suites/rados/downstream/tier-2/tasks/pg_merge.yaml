@@ -1,0 +1,20 @@
+tasks:
+  - install: null
+  - ceph:
+      log-whitelist:
+        - overall HEALTH_      
+        - \(PG_
+        - \(OSD_
+  - exec:
+      client.0:
+        - sudo ceph osd pool create foo 128                 #Creating a pool with 128 PG's
+        - ceph osd pool application enable foo foo
+        - sleep 5
+        - rados -p foo bench 5 write -b 1024 --no-cleanup   #Writing data
+        - ceph osd pool set foo pg_num 64                   #Reducing the PG's
+        - sleep 540                                         #Wating for sync  
+  - ceph.restart:
+        daemons: [osd.0]
+        wait-for-up: false
+        wait-for-healthy: false
+  - ceph.healthy: 
