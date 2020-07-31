@@ -37,13 +37,13 @@ pkgs:
     - python-cephfs
     - rbd-mirror
 
-repos:
-  rhel_7:
+rhel_repos:
+  '7':
     - rhel-7-server-rpms
     - rhel-7-server-optional-rpms
     - rhel-7-server-extras-rpms
     - rhel-7-server-ansible-2.8-rpms
-  rhel_8:
+  '8':
     - rhel-8-for-x86_64-appstream-rpms
     - rhel-8-for-x86_64-baseos-rpms
     - ansible-2.8-for-rhel-8-x86_64-rpms
