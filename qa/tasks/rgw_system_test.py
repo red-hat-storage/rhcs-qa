@@ -101,10 +101,8 @@ def task(ctx, config):
                 'source',
                 'venv/bin/activate',
                 run.Raw(';'),
-                'cd',
-                '%s' % test_root_dir,
-                run.Raw(';'),
-                run.Raw('pip3 install  --upgrade -r ceph-qe-scripts/rgw/requirements.txt'),
+                run.Raw('pip3 install boto boto3 names PyYaml ConfigParser python-swiftclient '
+                        'swiftly simplejson rgwadmin'),
                 run.Raw(';'),
                 'deactivate'])
 
