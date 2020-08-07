@@ -103,8 +103,7 @@ def task(ctx, config):
                 run.Raw(';'),
                 run.Raw('pip3 install boto boto3 names PyYaml ConfigParser python-swiftclient '
                         'swiftly simplejson rgwadmin'),
-                run.Raw(';'),
-                'deactivate'])
+                run.Raw(';')])
 
         time.sleep(60)
         log.info('trying to restart rgw service after sleep 60 secs')
