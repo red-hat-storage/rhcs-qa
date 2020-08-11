@@ -2,7 +2,6 @@
 System  Tests
 """
 import logging
-from io import StringIO
 from time import sleep
 
 from teuthology.orchestra import run
@@ -62,8 +61,7 @@ def daemon_service(dstate, action, retries=10):
         try:
             getattr(dstate, action)()
             __wait(60, msg="systemctl command executed")
-            res = dstate.remote.run(args=[run.Raw(dstate.show_cmd)], stdout=StringIO())
-            res = res.stdout.read().lower()
+            res = dstate.remote.sh(dstate.show_cmd).lower()
             if "ActiveState=failed".lower() in res:
                 assert False, res
             log.info("{} {} daemon - Successful ".format(mark, action))
@@ -74,11 +72,11 @@ def daemon_service(dstate, action, retries=10):
                                                                 retries))
             cmd = "sudo systemctl reset-failed"
             log.warn("{} Running '{}'".format(mark, cmd))
-            dstate.remote.run(args=[run.Raw(cmd)])
+            dstate.remote.sh(cmd)
             __wait(10, msg="Resetted failed daemons")
             cmd = "sudo systemctl daemon-reload"
             log.warn("{} Running '{}'".format(mark, cmd))
-            dstate.remote.run(args=[run.Raw(cmd)])
+            dstate.remote.sh(cmd)
             __wait(10, msg="Daemon reloaded")
             log.warn("{} Restarting daemon".format(mark))
             dstate.restart()
@@ -401,4 +399,3 @@ def ceph_daemon_system_test(ctx, daemon):
         assert False, err
     finally:
         log.info("[ {} ] : Daemon System tests - COMPLETED ".format(daemon.upper()))
-

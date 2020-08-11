@@ -94,10 +94,7 @@ class rgw_ios:
                                           pwd.getpwuid(os.getuid()).pw_name)
                 with open(local_file, 'w') as outfile:
                     outfile.write(yaml.dump(test_config, default_flow_style=False))
-                out = remote.run(args=[run.Raw('sudo echo $HOME')],
-                                 wait=False,
-                                 stdout=run.PIPE)
-                out = out.stdout.read().strip()
+                out = remote.sh('sudo echo $HOME').strip()
                 conf_file = os.path.join(out, test_root_dir, config_file)
                 log.info('local_file: %s' % local_file)
                 log.info('config_file: %s' % conf_file)
@@ -117,14 +114,9 @@ class rgw_ios:
                     'deactivate'])
 
             time.sleep(60)
+
             log.info('trying to restart rgw service after sleep 60 secs')
-            out = remote.run(args=[run.Raw('sudo systemctl is-active ceph-radosgw.target')],
-                             wait=False,
-                             stdout=run.PIPE)
-            try:
-                out = out.stdout.read().strip()
-            except AttributeError:
-                out = "inactive"
+            out = remote.sh('sudo systemctl is-active ceph-radosgw.target').strip()
             if "inactive" in out:
                 log.info('Restarting RGW service')
                 remote.run(args=[run.Raw('sudo systemctl restart ceph-radosgw.target')])
