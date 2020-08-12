@@ -1,0 +1,10 @@
+tasks:
+  - ssh-keys: null
+  - install.ship_utilities:
+  - rhceph_ansible: null
+  - rgw-system-test:
+      test: swift_stat_command_verification
+      script: swift_stats.py
+      clients: ['client.0']
+      config:
+        container_count: 1002
