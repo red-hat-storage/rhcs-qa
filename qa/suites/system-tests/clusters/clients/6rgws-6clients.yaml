@@ -1,0 +1,7 @@
+roles:
+- [rgw.0, client.0]
+- [rgw.1, client.1]
+- [rgw.2, client.2]
+- [rgw.3, client.3]
+- [rgw.4, client.4]
+- [rgw.5, client.5]

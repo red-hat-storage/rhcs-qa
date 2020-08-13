@@ -1,0 +1,11 @@
+roles:
+- [osd.0, osd.1, osd.2]
+- [osd.3, osd.4, osd.5]
+- [osd.6, osd.7, osd.8]
+- [osd.9, osd.10, osd.11]
+- [osd.12, osd.13, osd.14]
+- [osd.15, osd.16, osd.17]
+- [osd.18, osd.19, osd.20]
+- [osd.21, osd.22, osd.23]
+- [osd.24, osd.25, osd.26]
+- [osd.27, osd.28, osd.29]
