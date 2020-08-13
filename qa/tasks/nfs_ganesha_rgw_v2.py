@@ -161,15 +161,6 @@ def task(ctx, config):
 
     # run the test
 
-    remote.run(
-        args=[
-            'source',
-            'venv/bin/activate',
-            run.Raw(';'),
-            run.Raw('python3 {script} -c {config_file}'.format(script=script, config_file=config_file)),
-            run.Raw(';'),
-            'deactivate'])
-
     rgw[0].run(
         args=[
             'source',
