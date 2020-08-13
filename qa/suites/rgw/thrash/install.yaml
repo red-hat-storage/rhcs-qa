@@ -1,5 +1,9 @@
 tasks:
 - install:
+   extra_packages:
+    rpm:
+     - python-virtualenv
+     - python-devel  
 - ceph:
 - rgw: [client.0]
 
