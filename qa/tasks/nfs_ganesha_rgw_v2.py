@@ -126,7 +126,8 @@ def task(ctx, config):
             'source',
             'venv/bin/activate',
             run.Raw(';'),
-            run.Raw('pip3 install boto boto3 names PyYaml psutil ConfigParser'),
+            run.Raw('pip3 install boto boto3 names PyYaml psutil ConfigParser python-swiftclient '
+                    'swiftly simplejson rgwadmin'),
             run.Raw(';'),
             'deactivate'])
 
@@ -161,10 +162,15 @@ def task(ctx, config):
     # run the test
 
     rgw[0].run(
-        args=[run.Raw(
-            'sudo venv/bin/python3 nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/%s '
+        args=[
+            'source',
+            'venv/bin/activate',
+            run.Raw(';'),
+            run.Raw('python3 nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/%s '
             '-r nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/rgw_user.yaml '
-            '-c nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/%s ' % (script_name, test_name))])
+            '-c nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/%s ' % (script_name, test_name)),
+            run.Raw(';'),
+            'deactivate'])
 
     try:
         yield
