@@ -1,0 +1,5 @@
+roles:
+- [mon.a, mgr.z]
+- [mon.b, mgr.y]
+- [mon.c, mgr.x]
+- [mds.a]

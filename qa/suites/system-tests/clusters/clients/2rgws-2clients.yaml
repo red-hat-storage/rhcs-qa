@@ -1,0 +1,3 @@
+roles:
+- [rgw.0, client.0]
+- [rgw.1, client.1]
