@@ -870,6 +870,9 @@ class CephAnsible(Task):
             self.change_key_permission()
         self.wait_for_ceph_health()
 
+        # Execute commands provided at task level
+        self._execute_ceph_commands()
+
     def run_haproxy(self):
         """
         task:
@@ -1099,6 +1102,25 @@ class CephAnsible(Task):
                 'rbd', 'rbd', '--yes-i-really-mean-it'
             ],
             check_status=False)
+
+    def _execute_ceph_commands(self):
+        mon_node = self.ceph_first_mon
+        cmds = self.config.get('exec', list())
+        for cmd in cmds:
+            if 'sudo' not in cmd:
+                cmd = "sudo {}".format(cmd)
+            log.info('Executing CEPH command : {}'.format(cmd))
+            retries = 3
+            while retries:
+                try:
+                    out = mon_node.sh(cmd)
+                    log.info(out)
+                    break
+                except CommandFailedError as err:
+                    if not retries:
+                        raise CommandFailedError(err)
+                    retries -= 1
+            time.sleep(5)
 
     def fix_keyring_permission(self):
         def clients_only(role): return role.startswith('client')
