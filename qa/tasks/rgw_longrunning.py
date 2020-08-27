@@ -47,6 +47,7 @@ def do_auto_calculate_io(clients, config):
     # get the cluster size
 
     cluster_size = get_cluster_size_info(clients)
+    log.info('Cluster size values: %s' % cluster_size)
     available = cluster_size['AVAIL']
     log.info('Avil value from cluster: %s' % available)
     size, mem_unit = int(float(available[:-3])), available[-3:]
