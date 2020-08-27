@@ -48,10 +48,9 @@ def do_auto_calculate_io(clients, config):
 
     cluster_size = get_cluster_size_info(clients)
     log.info('Cluster size values: %s' % cluster_size)
-    available = cluster_size['AVAIL']
-    log.info('Avil value from cluster: %s' % available)
-    size, mem_unit = int(float(available[:-3])), available[-3:]
-    log.info('size: %s, mem_unit: %s' %(size, mem_unit))
+    size = float(cluster_size['SIZE'])
+    mem_unit = cluster_size['AVAIL']
+    log.info('size: %s, mem_unit: %s' % (size, mem_unit))
     available = size * MEM_UNITS_CONV.get(mem_unit)  # convert size to mbs
     replication = 3  # assuming the replication size is 3
     log.info('available size: %s' % available)
