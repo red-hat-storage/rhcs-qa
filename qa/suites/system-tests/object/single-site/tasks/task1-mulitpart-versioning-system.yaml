@@ -1,0 +1,47 @@
+tasks:
+- parallel:
+    - mixed_system_test.rgw_ios:
+        test: Mbuckets_with_Nobjects
+        script: test_Mbuckets_with_Nobjects.py
+        clients: ['client.0']
+        config:
+            local_file_delete: true
+            user_count: 1
+            bucket_count: 3
+            objects_count: 5000
+            objects_size_range:
+                min: 300
+                max: 500
+            test_ops:
+                create_bucket: true
+                create_object: true
+                upload_type: multipart
+                download_object: true
+                delete_bucket_object: true
+                sharding:
+                    enable: false
+                    max_shards: 0
+    - mixed_system_test.rgw_ios:
+        test: versioning_ops
+        script: test_versioning_with_objects.py
+        clients: ['client.0']
+        config:
+            local_file_delete: true
+            user_count: 1
+            bucket_count: 1
+            objects_count: 20000
+            version_count: 5
+            objects_size_range:
+                min: 5
+                max: 10
+            test_ops:
+                enable_version: true
+                suspend_version: false
+                copy_to_version: false
+                delete_object_versions: true
+                upload_after_suspend: false
+                create_bucket: true
+                create_object: true
+                delete_bucket_object: true
+    - mixed_system_test.restart_tests:
+        daemons: ["mgr", "mon", "mds", "osd"]
