@@ -1,0 +1,28 @@
+tasks:
+- parallel:
+    - mixed_system_test.rgw_ios:
+        test: RGW_dynamic_bucket_resharding
+        script: test_dynamic_bucket_resharding.py
+        clients: ['client.0']
+        config:
+          objects_count: 20000
+          objects_size_range:
+            min: 5
+            max: 10
+          sharding_type: dynamic
+          max_objects_per_shard: 100
+          test_ops:
+            delete_bucket_object: false
+    - mixed_system_test.rgw_ios:
+        test: RGW_manual_bucket_resharding
+        script: test_dynamic_bucket_resharding.py
+        clients: ['client.1']
+        config:
+          objects_count: 20000
+          objects_size_range:
+            min: 5
+            max: 10
+          sharding_type: manual
+          shards: 97
+          test_ops:
+            delete_bucket_object: false
