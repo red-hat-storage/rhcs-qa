@@ -21,6 +21,9 @@ tasks:
                 sharding:
                     enable: false
                     max_shards: 0
+                compression:
+                    enable: false
+                    type: zlib
     - mixed_system_test.rgw_ios:
         test: versioning_ops
         script: test_versioning_with_objects.py
