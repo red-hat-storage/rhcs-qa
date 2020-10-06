@@ -1,5 +1,4 @@
 
-from unittest import SkipTest
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.orchestra.run import CommandFailedError, ConnectionLostError
@@ -13,6 +12,22 @@ log = logging.getLogger(__name__)
 class TestMisc(CephFSTestCase):
     CLIENTS_REQUIRED = 2
 
+    def test_statfs_on_deleted_fs(self):
+        """
+        That statfs does not cause monitors to SIGSEGV after fs deletion.
+        """
+
+        self.mount_b.umount_wait()
+        self.mount_a.run_shell_payload("stat -f .")
+        self.fs.delete_all_filesystems()
+        # This will hang either way, run in background.
+        p = self.mount_a.run_shell_payload("stat -f .", wait=False, timeout=60, check_status=False)
+        time.sleep(30)
+        self.assertFalse(p.finished)
+        # the process is stuck in uninterruptible sleep, just kill the mount
+        self.mount_a.umount_wait(force=True)
+        p.wait()
+
     def test_getattr_caps(self):
         """
         Check if MDS recognizes the 'mask' parameter of open request.
@@ -20,14 +35,13 @@ class TestMisc(CephFSTestCase):
         """
 
         if not isinstance(self.mount_a, FuseMount):
-            raise SkipTest("Require FUSE client")
+            self.skipTest("Require FUSE client")
 
         # Enable debug. Client will requests CEPH_CAP_XATTR_SHARED
         # on lookup/open
         self.mount_b.umount_wait()
         self.set_conf('client', 'client debug getattr caps', 'true')
-        self.mount_b.mount()
-        self.mount_b.wait_until_mounted()
+        self.mount_b.mount_wait()
 
         # create a file and hold it open. MDS will issue CEPH_CAP_EXCL_*
         # to mount_a
@@ -68,7 +82,7 @@ class TestMisc(CephFSTestCase):
                                             '--yes-i-really-really-mean-it')
         self.fs.mon_manager.raw_cluster_cmd('osd', 'pool', 'create',
                                             self.fs.metadata_pool_name,
-                                            self.fs.get_pgs_per_fs_pool().__str__())
+                                            self.fs.pgs_per_fs_pool.__str__())
 
         dummyfile = '/etc/fstab'
 
@@ -105,7 +119,7 @@ class TestMisc(CephFSTestCase):
                                             '--yes-i-really-really-mean-it')
         self.fs.mon_manager.raw_cluster_cmd('osd', 'pool', 'create',
                                             self.fs.metadata_pool_name,
-                                            self.fs.get_pgs_per_fs_pool().__str__())
+                                            self.fs.pgs_per_fs_pool.__str__())
         self.fs.mon_manager.raw_cluster_cmd('fs', 'new', self.fs.name,
                                             self.fs.metadata_pool_name,
                                             data_pool_name)
@@ -128,7 +142,7 @@ class TestMisc(CephFSTestCase):
         self.mount_b.wait_for_visible()
 
         # Simulate client death
-        self.mount_a.kill()
+        self.mount_a.suspend_netns()
 
         try:
             # The waiter should get stuck waiting for the capability
@@ -151,7 +165,7 @@ class TestMisc(CephFSTestCase):
                                 cap_waited, session_timeout
                             ))
 
-            self.assertTrue(self.mount_a.is_blacklisted())
+            self.assertTrue(self.mount_a.is_blocklisted())
             cap_holder.stdin.close()
             try:
                 cap_holder.wait()
@@ -159,10 +173,7 @@ class TestMisc(CephFSTestCase):
                 # We killed it (and possibly its node), so it raises an error
                 pass
         finally:
-            self.mount_a.kill_cleanup()
-
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+            self.mount_a.resume_netns()
 
     def test_filtered_df(self):
         pool_name = self.fs.get_data_pool_name()
@@ -250,7 +261,7 @@ class TestCacheDrop(CephFSTestCase):
         here.
         """
         self._setup()
-        self.mount_a.kill()
+        self.mount_a.suspend_netns()
         # Note: recall is subject to the timeout. The journal flush will
         # be delayed due to the client being dead.
         result = self._run_drop_cache_cmd(timeout=5)
@@ -264,9 +275,7 @@ class TestCacheDrop(CephFSTestCase):
         # particular operation causing this is journal flush which causes the
         # MDS to wait wait for cap revoke.
         #self.assertEqual(0, result['trim_cache']['trimmed'])
-        self.mount_a.kill_cleanup()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.resume_netns()
 
     def test_drop_cache_command_dead(self):
         """
@@ -275,7 +284,7 @@ class TestCacheDrop(CephFSTestCase):
         here.
         """
         self._setup()
-        self.mount_a.kill()
+        self.mount_a.suspend_netns()
         result = self._run_drop_cache_cmd()
         self.assertEqual(result['client_recall']['return_code'], 0)
         self.assertEqual(result['flush_journal']['return_code'], 0)
@@ -286,6 +295,4 @@ class TestCacheDrop(CephFSTestCase):
         # stale session will be autoclosed at mdsmap['session_timeout']). The
         # particular operation causing this is journal flush which causes the
         # MDS to wait wait for cap revoke.
-        self.mount_a.kill_cleanup()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.resume_netns()

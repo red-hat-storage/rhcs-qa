@@ -42,12 +42,16 @@ def task(ctx, config):
     this operation on. This lets you e.g. set up one client with
     ``ceph-fuse`` and another with ``kclient``.
 
+    ``brxnet`` should be a Private IPv4 Address range, default range is
+    [192.168.0.0/16]
+
     Example that mounts all clients::
 
         tasks:
         - ceph:
         - ceph-fuse:
         - interactive:
+        - brxnet: [192.168.0.0/16]
 
     Example that uses both ``kclient` and ``ceph-fuse``::
 
@@ -105,12 +109,18 @@ def task(ctx, config):
     all_mounts = getattr(ctx, 'mounts', {})
     mounted_by_me = {}
     skipped = {}
+    remotes = set()
+
+    brxnet = config.get("brxnet", None)
 
     # Construct any new FuseMount instances
     for id_, remote in clients:
+        remotes.add(remote)
         client_config = config.get("client.%s" % id_)
         if client_config is None:
             client_config = {}
+
+        auth_id = client_config.get("auth_id", id_)
 
         skip = client_config.get("skip", False)
         if skip:
@@ -118,24 +128,18 @@ def task(ctx, config):
             continue
 
         if id_ not in all_mounts:
-            fuse_mount = FuseMount(ctx, client_config, testdir, id_, remote)
+            fuse_mount = FuseMount(ctx=ctx, client_config=client_config,
+                                   test_dir=testdir, client_id=auth_id,
+                                   client_remote=remote, brxnet=brxnet)
             all_mounts[id_] = fuse_mount
         else:
             # Catch bad configs where someone has e.g. tried to use ceph-fuse and kcephfs for the same client
             assert isinstance(all_mounts[id_], FuseMount)
 
         if not config.get("disabled", False) and client_config.get('mounted', True):
-            mounted_by_me[id_] = all_mounts[id_]
+            mounted_by_me[id_] = {"config": client_config, "mount": all_mounts[id_]}
 
     ctx.mounts = all_mounts
-
-    # Mount any clients we have been asked to (default to mount all)
-    log.info('Mounting ceph-fuse clients...')
-    for mount in mounted_by_me.values():
-        mount.mount()
-
-    for mount in mounted_by_me.values():
-        mount.wait_until_mounted()
 
     # Umount any pre-existing clients that we have not been asked to mount
     for client_id in set(all_mounts.keys()) - set(mounted_by_me.keys()) - set(skipped.keys()):
@@ -143,12 +147,32 @@ def task(ctx, config):
         if mount.is_mounted():
             mount.umount_wait()
 
+    for remote in remotes:
+        FuseMount.cleanup_stale_netnses_and_bridge(remote)
+
+    # Mount any clients we have been asked to (default to mount all)
+    log.info('Mounting ceph-fuse clients...')
+    for info in mounted_by_me.values():
+        config = info["config"]
+        mount_x = info['mount']
+        if config.get("mount_path"):
+            mount_x.cephfs_mntpt = config.get("mount_path")
+        if config.get("mountpoint"):
+            mount_x.hostfs_mntpt = config.get("mountpoint")
+        mount_x.mount()
+
+    for info in mounted_by_me.values():
+        info["mount"].wait_until_mounted()
+
     try:
         yield all_mounts
     finally:
         log.info('Unmounting ceph-fuse clients...')
 
-        for mount in mounted_by_me.values():
+        for info in mounted_by_me.values():
             # Conditional because an inner context might have umounted it
+            mount = info["mount"]
             if mount.is_mounted():
                 mount.umount_wait()
+        for remote in remotes:
+            FuseMount.cleanup_stale_netnses_and_bridge(remote)

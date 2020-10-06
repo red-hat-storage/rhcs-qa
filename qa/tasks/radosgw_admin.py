@@ -10,29 +10,25 @@ Rgw admin testing against a running instance
 #	python qa/tasks/radosgw_admin.py [USER] HOSTNAME
 #
 
-import copy
 import json
 import logging
 import time
 import datetime
-import queue
-
 import sys
-import six
 
 from io import BytesIO
+from queue import Queue
 
 import boto.exception
 import boto.s3.connection
 import boto.s3.acl
-from boto.utils import RequestHook
 
 import httplib2
+
 
 from tasks.util.rgw import rgwadmin, get_user_summary, get_user_successful_ops
 
 log = logging.getLogger(__name__)
-
 
 def usage_acc_findentry2(entries, user, add=True):
     for e in entries:
@@ -43,8 +39,6 @@ def usage_acc_findentry2(entries, user, add=True):
     e = {'user': user, 'buckets': []}
     entries.append(e)
     return e
-
-
 def usage_acc_findsum2(summaries, user, add=True):
     for e in summaries:
         if e['user'] == user:
@@ -56,16 +50,12 @@ def usage_acc_findsum2(summaries, user, add=True):
             'bytes_sent': 0, 'ops': 0, 'successful_ops': 0 }}
     summaries.append(e)
     return e
-
-
 def usage_acc_update2(x, out, b_in, err):
     x['bytes_sent'] += b_in
     x['bytes_received'] += out
     x['ops'] += 1
     if not err:
         x['successful_ops'] += 1
-
-
 def usage_acc_validate_fields(r, x, x2, what):
     q=[]
     for field in ['bytes_sent', 'bytes_received', 'ops', 'successful_ops']:
@@ -77,18 +67,13 @@ def usage_acc_validate_fields(r, x, x2, what):
             return
     if len(q) > 0:
         r.append("incomplete counts in " + what + ": " + ", ".join(q))
-
-
 class usage_acc:
     def __init__(self):
         self.results = {'entries': [], 'summary': []}
-
     def findentry(self, user):
         return usage_acc_findentry2(self.results['entries'], user)
-
     def findsum(self, user):
         return usage_acc_findsum2(self.results['summary'], user)
-
     def e2b(self, e, bucket, add=True):
         for b in e['buckets']:
             if b['bucket'] == bucket:
@@ -98,7 +83,6 @@ class usage_acc:
         b = {'bucket': bucket, 'categories': []}
         e['buckets'].append(b)
         return b
-
     def c2x(self, c, cat, add=True):
         for x in c:
             if x['category'] == cat:
@@ -109,13 +93,11 @@ class usage_acc:
             'bytes_sent': 0, 'ops': 0, 'successful_ops': 0 }
         c.append(x)
         return x
-
     def update(self, c, cat, user, out, b_in, err):
         x = self.c2x(c, cat)
         usage_acc_update2(x, out, b_in, err)
         if not err and cat == 'create_bucket' and 'owner' not in x:
             x['owner'] = user
-
     def make_entry(self, cat, bucket, user, out, b_in, err):
         if cat == 'create_bucket' and err:
                 return
@@ -127,13 +109,10 @@ class usage_acc:
         usage_acc_update2(x, out, b_in, err)
         x = s['total']
         usage_acc_update2(x, out, b_in, err)
-
     def generate_make_entry(self):
         return lambda cat,bucket,user,out,b_in,err: self.make_entry(cat, bucket, user, out, b_in, err)
-
     def get_usage(self):
         return self.results
-
     def compare_results(self, results):
         if 'entries' not in results or 'summary' not in results:
             return ['Missing entries or summary']
@@ -143,7 +122,7 @@ class usage_acc:
                 e2 = usage_acc_findentry2(results['entries'], e['user'], False)
             except Exception as ex:
                 r.append("malformed entry looking for user "
-                         + e['user'] + " " + str(ex))
+		    + e['user'] + " " + str(ex))
                 break
             if e2 == None:
                 r.append("missing entry for user " + e['user'])
@@ -155,52 +134,52 @@ class usage_acc:
                 try:
                     b2 = self.e2b(e2, b['bucket'], False)
                     if b2 != None:
-                        c2 = b2['categories']
+                            c2 = b2['categories']
                 except Exception as ex:
                     r.append("malformed entry looking for bucket "
-                             + b['bucket'] + " in user " + e['user'] + " " + str(ex))
+			+ b['bucket'] + " in user " + e['user'] + " " + str(ex))
                     break
                 if b2 == None:
                     r.append("can't find bucket " + b['bucket']
-                             + " in user " + e['user'])
+			+ " in user " + e['user'])
                     continue
                 for x in c:
                     try:
                         x2 = self.c2x(c2, x['category'], False)
                     except Exception as ex:
                         r.append("malformed entry looking for "
-                                 + x['category'] + " in bucket " + b['bucket']
-                                 + " user " + e['user'] + " " + str(ex))
+			    + x['category'] + " in bucket " + b['bucket']
+			    + " user " + e['user'] + " " + str(ex))
                         break
                     usage_acc_validate_fields(r, x, x2, "entry: category "
-                                              + x['category'] + " bucket " + b['bucket']
-                                              + " in user " + e['user'])
+			+ x['category'] + " bucket " + b['bucket']
+			+ " in user " + e['user'])
         for s in self.results['summary']:
             c = s['categories']
             try:
                 s2 = usage_acc_findsum2(results['summary'], s['user'], False)
             except Exception as ex:
                 r.append("malformed summary looking for user " + e['user']
-                         + " " + str(ex))
+		    + " " + str(ex))
                 break
-            if s2 == None:
-                r.append("missing summary for user " + e['user'] + " " + str(ex))
-                continue
+                if s2 == None:
+                    r.append("missing summary for user " + e['user'] + " " + str(ex))
+                    continue
             try:
                 c2 = s2['categories']
             except Exception as ex:
                 r.append("malformed summary missing categories for user "
-                         + e['user'] + " " + str(ex))
+		    + e['user'] + " " + str(ex))
                 break
             for x in c:
                 try:
                     x2 = self.c2x(c2, x['category'], False)
                 except Exception as ex:
                     r.append("malformed summary looking for "
-                             + x['category'] + " user " + e['user'] + " " + str(ex))
+			+ x['category'] + " user " + e['user'] + " " + str(ex))
                     break
                 usage_acc_validate_fields(r, x, x2, "summary: category "
-                                          + x['category'] + " in user " + e['user'])
+		    + x['category'] + " in user " + e['user'])
             x = s['total']
             try:
                 x2 = s2['total']
@@ -211,16 +190,12 @@ class usage_acc:
             usage_acc_validate_fields(r, x, x2, "summary: totals for user" + e['user'])
         return r
 
-
 def ignore_this_entry(cat, bucket, user, out, b_in, err):
     pass
-
-
 class requestlog_queue():
     def __init__(self, add):
-        self.q = queue.Queue(1000)
+        self.q = Queue(1000)
         self.adder = add
-
     def handle_request_data(self, request, response, error=False):
         now = datetime.datetime.now()
         if error:
@@ -228,20 +203,18 @@ class requestlog_queue():
         elif response.status < 200 or response.status >= 400:
             error = True
         self.q.put({'t': now, 'o': request, 'i': response, 'e': error})
-
     def clear(self):
         with self.q.mutex:
             self.q.queue.clear()
-
-    def log_and_clear(self, cat, bucket, user, add_entry=None):
+    def log_and_clear(self, cat, bucket, user, add_entry = None):
         while not self.q.empty():
             j = self.q.get()
             bytes_out = 0
             if 'Content-Length' in j['o'].headers:
                 bytes_out = int(j['o'].headers['Content-Length'])
             bytes_in = 0
-            msg = j['i'].msg if six.PY3 else j['i'].msg.dict
-            if 'content-length' in msg:
+            msg = j['i'].msg
+            if 'content-length'in msg:
                 bytes_in = int(msg['content-length'])
             log.info('RL: %s %s %s bytes_out=%d bytes_in=%d failed=%r'
                      % (cat, bucket, user, bytes_out, bytes_in, j['e']))
@@ -249,15 +222,13 @@ class requestlog_queue():
                 add_entry = self.adder
             add_entry(cat, bucket, user, bytes_out, bytes_in, j['e'])
 
-
 def create_presigned_url(conn, method, bucket_name, key_name, expiration):
     return conn.generate_url(expires_in=expiration,
-                             method=method,
-                             bucket=bucket_name,
-                             key=key_name,
-                             query_auth=True,
-                             )
-
+        method=method,
+        bucket=bucket_name,
+        key=key_name,
+        query_auth=True,
+    )
 
 def send_raw_http_request(conn, method, bucket_name, key_name, follow_redirects = False):
     url = create_presigned_url(conn, method, bucket_name, key_name, 3600)
@@ -272,7 +243,7 @@ def get_acl(key):
     Helper function to get the xml acl from a key, ensuring that the xml
     version tag is removed from the acl response
     """
-    raw_acl = six.ensure_str(key.get_xml_acl())
+    raw_acl = key.get_xml_acl().decode()
 
     def remove_version(string):
         return string.split(
@@ -285,7 +256,6 @@ def get_acl(key):
     return remove_version(
         remove_newlines(raw_acl)
     )
-
 
 def task(ctx, config):
     """
@@ -308,23 +278,27 @@ def task(ctx, config):
     endpoint = ctx.rgw.role_endpoints[client]
 
     ##
-    user1 = 'foo'
-    user2 = 'fud'
-    subuser1 = 'foo:foo1'
-    subuser2 = 'foo:foo2'
-    display_name1 = 'Foo'
-    display_name2 = 'Fud'
-    email = 'foo@foo.com'
-    email2 = 'bar@bar.com'
-    access_key = '9te6NH5mcdcq0Tc5i8i1'
-    secret_key = 'Ny4IOauQoL18Gp2zM7lC1vLmoawgqcYP/YGcWfXu'
-    access_key2 = 'p5YnriCv1nAtykxBrupQ'
-    secret_key2 = 'Q8Tk6Q/27hfbFSYdSkPtUqhqx1GgzvpXa4WARozh'
-    swift_secret1 = 'gpS2G9RREMrnbqlp29PP2D36kgPR1tm72n5fPYfL'
-    swift_secret2 = 'ri2VJQcKSYATOY6uaDUX7pxgkW+W1YmC6OCxPHwy'
+    user1='foo'
+    user2='fud'
+    user3='bar'
+    user4='bud'
+    subuser1='foo:foo1'
+    subuser2='foo:foo2'
+    display_name1='Foo'
+    display_name2='Fud'
+    display_name3='Bar'
+    email='foo@foo.com'
+    access_key='9te6NH5mcdcq0Tc5i8i1'
+    secret_key='Ny4IOauQoL18Gp2zM7lC1vLmoawgqcYP/YGcWfXu'
+    access_key2='p5YnriCv1nAtykxBrupQ'
+    secret_key2='Q8Tk6Q/27hfbFSYdSkPtUqhqx1GgzvpXa4WARozh'
+    access_key3='NX5QOQKC6BH2IDN8HC7A'
+    secret_key3='LnEsqNNqZIpkzauboDcLXLcYaWwLQ3Kop0zAnKIn'
+    swift_secret1='gpS2G9RREMrnbqlp29PP2D36kgPR1tm72n5fPYfL'
+    swift_secret2='ri2VJQcKSYATOY6uaDUX7pxgkW+W1YmC6OCxPHwy'
 
-    bucket_name = 'myfoo'
-    bucket_name2 = 'mybar'
+    bucket_name='myfoo'
+    bucket_name2='mybar'
 
     # connect to rgw
     connection = boto.s3.connection.S3Connection(
@@ -343,11 +317,20 @@ def task(ctx, config):
         host=endpoint.hostname,
         calling_format=boto.s3.connection.OrdinaryCallingFormat(),
         )
+    connection3 = boto.s3.connection.S3Connection(
+        aws_access_key_id=access_key3,
+        aws_secret_access_key=secret_key3,
+        is_secure=False,
+        port=endpoint.port,
+        host=endpoint.hostname,
+        calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+        )
 
     acc = usage_acc()
     rl = requestlog_queue(acc.generate_make_entry())
     connection.set_request_hook(rl)
     connection2.set_request_hook(rl)
+    connection3.set_request_hook(rl)
 
     # legend (test cases can be easily grep-ed out)
     # TESTCASE 'testname','object','method','operation','assertion'
@@ -565,6 +548,12 @@ def task(ctx, config):
     assert out['usage']['rgw.main']['num_objects'] == 1
     assert out['usage']['rgw.main']['size_kb'] > 0
 
+    #validate we have a positive user stats now
+    (err, out) = rgwadmin(ctx, client,
+                          ['user', 'stats','--uid', user1, '--sync-stats'],
+                          check_status=True)
+    assert out['stats']['size'] > 0
+
     # reclaim it
     key.delete()
     rl.log_and_clear("delete_obj", bucket_name, user1)
@@ -628,6 +617,40 @@ def task(ctx, config):
         check_status=True)
 
     (err, out) = rgwadmin(ctx, client, ['user', 'rm', '--uid', user2],
+        check_status=True)
+
+    #TESTCASE 'bucket link', 'bucket', 'tenanted user', 'succeeds'
+    tenant_name = "testx"
+    # create a tenanted user to link the bucket to
+    (err, out) = rgwadmin(ctx, client, [
+            'user', 'create',
+            '--tenant', tenant_name,
+            '--uid', 'tenanteduser',
+            '--display-name', 'tenanted-user',
+            '--access-key', access_key2,
+            '--secret', secret_key2,
+            '--max-buckets', '1',
+            ],
+            check_status=True)
+
+    # link the bucket to a tenanted user
+    (err, out) = rgwadmin(ctx, client, ['bucket', 'link', '--bucket', '/' + bucket_name, '--tenant', tenant_name, '--uid', 'tenanteduser'],
+        check_status=True)
+
+    # check if the bucket name has tenant/ prefix
+    (err, out) = rgwadmin(ctx, client, ['metadata', 'get', 'bucket:{n}'.format(n= tenant_name + '/' + bucket_name)],
+        check_status=True)
+
+    bucket_data = out['data']
+    assert bucket_data['bucket']['name'] == bucket_name
+    assert bucket_data['bucket']['tenant'] == tenant_name
+
+    # relink the bucket to the first user and delete the tenanted user
+    (err, out) = rgwadmin(ctx, client,
+        ['bucket', 'link', '--bucket', tenant_name + '/' + bucket_name, '--uid', user1],
+        check_status=True)
+
+    (err, out) = rgwadmin(ctx, client, ['user', 'rm', '--tenant', tenant_name, '--uid', 'tenanteduser'],
         check_status=True)
 
     # TESTCASE 'object-rm', 'object', 'rm', 'remove object', 'succeeds, object is removed'
@@ -775,8 +798,8 @@ def task(ctx, config):
     rl.log_and_clear("put_acls", bucket_name, user1)
 
     (err, out) = rgwadmin(ctx, client,
-                          ['policy', '--bucket', bucket.name, '--object', six.ensure_str(key.key)],
-                          check_status=True, format='xml')
+        ['policy', '--bucket', bucket.name, '--object', key.key.decode()],
+        check_status=True, format='xml')
 
     acl = get_acl(key)
     rl.log_and_clear("get_acls", bucket_name, user1)
@@ -788,8 +811,8 @@ def task(ctx, config):
     rl.log_and_clear("put_acls", bucket_name, user1)
 
     (err, out) = rgwadmin(ctx, client,
-                          ['policy', '--bucket', bucket.name, '--object', six.ensure_str(key.key)],
-                          check_status=True, format='xml')
+        ['policy', '--bucket', bucket.name, '--object', key.key.decode()],
+        check_status=True, format='xml')
 
     acl = get_acl(key)
     rl.log_and_clear("get_acls", bucket_name, user1)
@@ -885,6 +908,90 @@ def task(ctx, config):
         assert entry['category'] == cat
         assert entry['successful_ops'] > 0
 
+    # TESTCASE 'user-rename', 'user', 'rename', 'existing user', 'new user', 'succeeds'
+    # create a new user user3
+    (err, out) = rgwadmin(ctx, client, [
+        'user', 'create',
+        '--uid', user3,
+        '--display-name', display_name3,
+        '--access-key', access_key3,
+        '--secret', secret_key3,
+        '--max-buckets', '4'
+        ],
+        check_status=True)
+
+    # create a bucket
+    bucket = connection3.create_bucket(bucket_name + '6')
+
+    rl.log_and_clear("create_bucket", bucket_name + '6', user3)
+
+    # create object
+    object_name1 = 'thirteen'
+    key1 = boto.s3.key.Key(bucket, object_name1)
+    key1.set_contents_from_string(object_name1)
+    rl.log_and_clear("put_obj", bucket_name + '6', user3)
+
+    # rename user3
+    (err, out) = rgwadmin(ctx, client, ['user', 'rename', '--uid', user3, '--new-uid', user4], check_status=True)
+    assert out['user_id'] == user4
+    assert out['keys'][0]['access_key'] == access_key3
+    assert out['keys'][0]['secret_key'] == secret_key3
+
+    time.sleep(5)
+
+    # get bucket and object to test if user keys are preserved
+    bucket = connection3.get_bucket(bucket_name + '6')
+    s = key1.get_contents_as_string(encoding='ascii')
+    rl.log_and_clear("get_obj", bucket_name + '6', user4)
+    assert s == object_name1
+
+    # TESTCASE 'user-rename', 'user', 'rename', 'existing user', 'another existing user', 'fails'
+    # create a new user user2
+    (err, out) = rgwadmin(ctx, client, [
+        'user', 'create',
+        '--uid', user2,
+        '--display-name', display_name2,
+        '--access-key', access_key2,
+        '--secret', secret_key2,
+        '--max-buckets', '4'
+        ],
+        check_status=True)
+
+    # create a bucket
+    bucket = connection2.create_bucket(bucket_name + '7')
+
+    rl.log_and_clear("create_bucket", bucket_name + '7', user2)
+
+    # create object
+    object_name2 = 'fourteen'
+    key2 = boto.s3.key.Key(bucket, object_name2)
+    key2.set_contents_from_string(object_name2)
+    rl.log_and_clear("put_obj", bucket_name + '7', user2)
+
+    (err, out) = rgwadmin(ctx, client, ['user', 'rename', '--uid', user4, '--new-uid', user2])
+    assert err
+
+    # test if user 2 and user4 can still access their bucket and objects after rename fails
+    bucket = connection3.get_bucket(bucket_name + '6')
+    s = key1.get_contents_as_string(encoding='ascii')
+    rl.log_and_clear("get_obj", bucket_name + '6', user4)
+    assert s == object_name1
+
+    bucket = connection2.get_bucket(bucket_name + '7')
+    s = key2.get_contents_as_string(encoding='ascii')
+    rl.log_and_clear("get_obj", bucket_name + '7', user2)
+    assert s == object_name2
+
+    (err, out) = rgwadmin(ctx, client,
+    ['user', 'rm', '--uid', user4, '--purge-data' ],
+    check_status=True)
+
+    (err, out) = rgwadmin(ctx, client,
+    ['user', 'rm', '--uid', user2, '--purge-data' ],
+    check_status=True)
+
+    time.sleep(5)
+
     # should be all through with connection. (anything using connection
     #  should be BEFORE the usage stuff above.)
     rl.log_and_clear("(before-close)", '-', '-', ignore_this_entry)
@@ -931,7 +1038,7 @@ def task(ctx, config):
     out['placement_pools'].append(rule)
 
     (err, out) = rgwadmin(ctx, client, ['zone', 'set'],
-        stdin=BytesIO(six.ensure_binary(json.dumps(out))),
+        stdin=BytesIO(json.dumps(out).encode()),
         check_status=True)
 
     (err, out) = rgwadmin(ctx, client, ['zone', 'get'])
@@ -947,12 +1054,9 @@ def task(ctx, config):
     # TESTCASE 'zonegroup-info', 'zonegroup', 'get', 'get zonegroup info', 'succeeds'
     (err, out) = rgwadmin(ctx, client, ['zonegroup', 'get'], check_status=True)
 
-import sys
-from tasks.radosgw_admin import task
 from teuthology.config import config
 from teuthology.orchestra import cluster, remote
 import argparse;
-
 
 def main():
     if len(sys.argv) == 3:
@@ -967,20 +1071,18 @@ def main():
     client0 = remote.Remote(user + host)
     ctx = config
     ctx.cluster=cluster.Cluster(remotes=[(client0,
-     [ 'ceph.client.rgw.%s' % (host),  ]),])
-
+        [ 'ceph.client.rgw.%s' % (host),  ]),])
     ctx.rgw = argparse.Namespace()
     endpoints = {}
     endpoints['ceph.client.rgw.%s' % host] = (host, 80)
     ctx.rgw.role_endpoints = endpoints
     ctx.rgw.realm = None
-    ctx.rgw.regions = {'region0': {'api name': 'api1',
-                                   'is master': True, 'master zone': 'r0z0',
-                                   'zones': ['r0z0', 'r0z1']}}
+    ctx.rgw.regions = {'region0': { 'api name': 'api1',
+        'is master': True, 'master zone': 'r0z0',
+        'zones': ['r0z0', 'r0z1'] }}
     ctx.rgw.config = {'ceph.client.rgw.%s' % host: {'system user': {'name': '%s-system-user' % host}}}
     task(config, None)
     exit()
-
 
 if __name__ == '__main__':
     main()

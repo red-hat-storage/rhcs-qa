@@ -5,52 +5,35 @@ import argparse
 import contextlib
 import logging
 
+# still need this for python3.6
+from collections import OrderedDict
+from itertools import chain
+
 from teuthology import misc as teuthology
 from teuthology import contextutil
 from teuthology.orchestra import run
 from teuthology.packaging import install_package
 from teuthology.packaging import remove_package
+from teuthology.exceptions import ConfigError
 
 log = logging.getLogger(__name__)
 
 
-@contextlib.contextmanager
-def install_packages(ctx, config):
-    """
-    Download the packaged dependencies of Keystone.
-    Remove install packages upon exit.
-
-    The context passed in should be identical to the context
-    passed in to the main task.
-    """
-    assert isinstance(config, dict)
-    log.info('Installing packages for Keystone...')
-
-    deps = {
-	'deb': [ 'libffi-dev', 'libssl-dev', 'libldap2-dev', 'libsasl2-dev' ],
-	'rpm': [ 'libffi-devel', 'openssl-devel' ],
-    }
-    for (client, _) in list(config.items()):
-        (remote,) = iter(ctx.cluster.only(client).remotes.keys())
-        for dep in deps[remote.os.package_type]:
-            install_package(dep, remote)
-    try:
-        yield
-    finally:
-        log.info('Removing packaged dependencies of Keystone...')
-
-        for (client, _) in list(config.items()):
-            (remote,) = iter(ctx.cluster.only(client).remotes.keys())
-            for dep in deps[remote.os.package_type]:
-                remove_package(dep, remote)
-
 def get_keystone_dir(ctx):
     return '{tdir}/keystone'.format(tdir=teuthology.get_testdir(ctx))
 
-def run_in_keystone_dir(ctx, client, args):
-    ctx.cluster.only(client).run(
+def run_in_keystone_dir(ctx, client, args, **kwargs):
+    return ctx.cluster.only(client).run(
         args=[ 'cd', get_keystone_dir(ctx), run.Raw('&&'), ] + args,
+        **kwargs
     )
+
+def get_toxvenv_dir(ctx):
+    return ctx.tox.venv_path
+
+def toxvenv_sh(ctx, remote, args, **kwargs):
+    activate = get_toxvenv_dir(ctx) + '/bin/activate'
+    return remote.sh(['source', activate, run.Raw('&&')] + args, **kwargs)
 
 def run_in_keystone_venv(ctx, client, args):
     run_in_keystone_dir(ctx, client,
@@ -62,9 +45,6 @@ def run_in_keystone_venv(ctx, client, args):
 def get_keystone_venved_cmd(ctx, cmd, args):
     kbindir = get_keystone_dir(ctx) + '/.tox/venv/bin/'
     return [ kbindir + 'python', kbindir + cmd ] + args
-
-def get_toxvenv_dir(ctx):
-    return ctx.tox.venv_path
 
 @contextlib.contextmanager
 def download(ctx, config):
@@ -113,6 +93,38 @@ def download(ctx, config):
             )
 
 @contextlib.contextmanager
+def install_packages(ctx, config):
+    """
+    Download the packaged dependencies of Keystone.
+    Remove install packages upon exit.
+
+    The context passed in should be identical to the context
+    passed in to the main task.
+    """
+    assert isinstance(config, dict)
+    log.info('Installing packages for Keystone...')
+
+    packages = {}
+    for (client, _) in config.items():
+        (remote,) = ctx.cluster.only(client).remotes.keys()
+        # use bindep to read which dependencies we need from keystone/bindep.txt
+        toxvenv_sh(ctx, remote, ['pip', 'install', 'bindep'])
+        packages[client] = toxvenv_sh(ctx, remote,
+                ['bindep', '--brief', '--file', '{}/bindep.txt'.format(get_keystone_dir(ctx))],
+                check_status=False).splitlines() # returns 1 on success?
+        for dep in packages[client]:
+            install_package(dep, remote)
+    try:
+        yield
+    finally:
+        log.info('Removing packaged dependencies of Keystone...')
+
+        for (client, _) in config.items():
+            (remote,) = ctx.cluster.only(client).remotes.keys()
+            for dep in packages[client]:
+                remove_package(dep, remote)
+
+@contextlib.contextmanager
 def setup_venv(ctx, config):
     """
     Setup the virtualenv for Keystone using tox.
@@ -128,7 +140,10 @@ def setup_venv(ctx, config):
             ])
 
         run_in_keystone_venv(ctx, client,
-            [   'pip', 'install', 'python-openstackclient' ])
+            [   'pip', 'install',
+                'python-openstackclient==5.2.1',
+                'osc-lib==2.0.0'
+             ])
     try:
         yield
     finally:
@@ -144,6 +159,13 @@ def configure_instance(ctx, config):
         # prepare the config file
         run_in_keystone_dir(ctx, client,
             [
+                'source',
+                f'{get_toxvenv_dir(ctx)}/bin/activate',
+                run.Raw('&&'),
+                'tox', '-e', 'genconfig'
+            ])
+        run_in_keystone_dir(ctx, client,
+            [
                 'cp', '-f',
                 'etc/keystone.conf.sample',
                 'etc/keystone.conf'
@@ -151,14 +173,21 @@ def configure_instance(ctx, config):
         run_in_keystone_dir(ctx, client,
             [
                 'sed',
-                '-e', 's/#admin_token =.*/admin_token = ADMIN/',
+                '-e', 's^#key_repository =.*^key_repository = {kr}^'.format(kr = keyrepo_dir),
                 '-i', 'etc/keystone.conf'
             ])
+        # log to a file that gets archived
+        log_file = '{p}/archive/keystone.{c}.log'.format(p=teuthology.get_testdir(ctx), c=client)
         run_in_keystone_dir(ctx, client,
             [
                 'sed',
-                '-e', 's^#key_repository =.*^key_repository = {kr}^'.format(kr = keyrepo_dir),
+                '-e', 's^#log_file =.*^log_file = {}^'.format(log_file),
                 '-i', 'etc/keystone.conf'
+            ])
+        # copy the config to archive
+        run_in_keystone_dir(ctx, client, [
+                'cp', 'etc/keystone.conf',
+                '{}/archive/keystone.{}.conf'.format(teuthology.get_testdir(ctx), client)
             ])
 
         # prepare key repository for Fetnet token authenticator
@@ -180,7 +209,6 @@ def run_keystone(ctx, config):
 
         # start the public endpoint
         client_public_with_id = 'keystone.public' + '.' + client_id
-        client_public_with_cluster = cluster_name + '.' + client_public_with_id
 
         public_host, public_port = ctx.keystone.public_endpoints[client]
         run_cmd = get_keystone_venved_cmd(ctx, 'keystone-wsgi-public',
@@ -238,68 +266,96 @@ def run_keystone(ctx, config):
                                cluster_name).stop()
 
 
-def dict_to_args(special, items):
+def dict_to_args(specials, items):
     """
     Transform
         [(key1, val1), (special, val_special), (key3, val3) ]
     into:
         [ '--key1', 'val1', '--key3', 'val3', 'val_special' ]
     """
-    args=[]
+    args = []
+    special_vals = OrderedDict((k, '') for k in specials.split(','))
     for (k, v) in items:
-        if k == special:
-            special_val = v
+        if k in special_vals:
+            special_vals[k] = v
         else:
             args.append('--{k}'.format(k=k))
             args.append(v)
-    if special_val:
-        args.append(special_val)
+    args.extend(arg for arg in special_vals.values() if arg)
     return args
 
-def run_section_cmds(ctx, cclient, section_cmd, special,
+def run_section_cmds(ctx, cclient, section_cmd, specials,
                      section_config_list):
     admin_host, admin_port = ctx.keystone.admin_endpoints[cclient]
 
     auth_section = [
-        ( 'os-token', 'ADMIN' ),
-        ( 'os-url', 'http://{host}:{port}/v2.0'.format(host=admin_host,
-                                                       port=admin_port) ),
+        ( 'os-username', 'admin' ),
+        ( 'os-password', 'ADMIN' ),
+        ( 'os-user-domain-id', 'default' ),
+        ( 'os-project-name', 'admin' ),
+        ( 'os-project-domain-id', 'default' ),
+        ( 'os-identity-api-version', '3' ),
+        ( 'os-auth-url', 'http://{host}:{port}/v3'.format(host=admin_host,
+                                                          port=admin_port) ),
     ]
 
     for section_item in section_config_list:
         run_in_keystone_venv(ctx, cclient,
             [ 'openstack' ] + section_cmd.split() +
-            dict_to_args(special, auth_section + list(section_item.items())))
+            dict_to_args(specials, auth_section + list(section_item.items())) +
+            [ '--debug' ])
 
-def create_endpoint(ctx, cclient, service, url):
-    endpoint_section = {
-        'service': service,
-        'publicurl': url,
-    }
-    return run_section_cmds(ctx, cclient, 'endpoint create', 'service',
-                            [ endpoint_section ])
+def create_endpoint(ctx, cclient, service, url, adminurl=None):
+    endpoint_sections = [
+        {'service': service, 'interface': 'public', 'url': url},
+    ]
+    if adminurl:
+        endpoint_sections.append(
+            {'service': service, 'interface': 'admin', 'url': adminurl}
+        )
+    run_section_cmds(ctx, cclient, 'endpoint create',
+                     'service,interface,url',
+                     endpoint_sections)
 
 @contextlib.contextmanager
 def fill_keystone(ctx, config):
     assert isinstance(config, dict)
 
     for (cclient, cconfig) in config.items():
-        # configure tenants/projects
-        run_section_cmds(ctx, cclient, 'project create', 'name',
-                         cconfig['tenants'])
-        run_section_cmds(ctx, cclient, 'user create', 'name',
-                         cconfig['users'])
-        run_section_cmds(ctx, cclient, 'role create', 'name',
-                         cconfig['roles'])
-        run_section_cmds(ctx, cclient, 'role add', 'name',
-                         cconfig['role-mappings'])
-        run_section_cmds(ctx, cclient, 'service create', 'name',
-                         cconfig['services'])
-
         public_host, public_port = ctx.keystone.public_endpoints[cclient]
-        url = 'http://{host}:{port}/v2.0'.format(host=public_host,
-                                                 port=public_port)
-        create_endpoint(ctx, cclient, 'keystone', url)
+        url = 'http://{host}:{port}/v3'.format(host=public_host,
+                                               port=public_port)
+        admin_host, admin_port = ctx.keystone.admin_endpoints[cclient]
+        admin_url = 'http://{host}:{port}/v3'.format(host=admin_host,
+                                                     port=admin_port)
+        opts = {'password': 'ADMIN',
+                'username': 'admin',
+                'project-name': 'admin',
+                'role-name': 'admin',
+                'service-name': 'keystone',
+                'region-id': 'RegionOne',
+                'admin-url': admin_url,
+                'public-url': url}
+        bootstrap_args = chain.from_iterable(('--bootstrap-{}'.format(k), v)
+                                             for k, v in opts.items())
+        run_in_keystone_venv(ctx, cclient,
+                             ['keystone-manage', 'bootstrap'] +
+                             list(bootstrap_args))
+
+        # configure tenants/projects
+        run_section_cmds(ctx, cclient, 'domain create', 'name',
+                         cconfig.get('domains', []))
+        run_section_cmds(ctx, cclient, 'project create', 'name',
+                         cconfig.get('projects', []))
+        run_section_cmds(ctx, cclient, 'user create', 'name',
+                         cconfig.get('users', []))
+        run_section_cmds(ctx, cclient, 'role create', 'name',
+                         cconfig.get('roles', []))
+        run_section_cmds(ctx, cclient, 'role add', 'name',
+                         cconfig.get('role-mappings', []))
+        run_section_cmds(ctx, cclient, 'service create', 'type',
+                         cconfig.get('services', []))
+
         # for the deferred endpoint creation; currently it's used in rgw.py
         ctx.keystone.create_endpoint = create_endpoint
 
@@ -337,7 +393,10 @@ def task(ctx, config):
       - keystone:
           client.0:
             force-branch: master
-            tenants:
+            domains:
+              - name: default
+                description: Default Domain
+            projects:
               - name: admin
                 description:  Admin Tenant
             users:
@@ -361,7 +420,7 @@ def task(ctx, config):
         or isinstance(config, dict), \
         "task keystone only supports a list or dictionary for configuration"
 
-    if not ctx.tox:
+    if not hasattr(ctx, 'tox'):
         raise ConfigError('keystone must run after the tox task')
 
     all_clients = ['client.{id}'.format(id=id_)
@@ -378,8 +437,8 @@ def task(ctx, config):
     ctx.keystone.admin_endpoints = assign_ports(ctx, config, 35357)
 
     with contextutil.nested(
-        lambda: install_packages(ctx=ctx, config=config),
         lambda: download(ctx=ctx, config=config),
+        lambda: install_packages(ctx=ctx, config=config),
         lambda: setup_venv(ctx=ctx, config=config),
         lambda: configure_instance(ctx=ctx, config=config),
         lambda: run_keystone(ctx=ctx, config=config),

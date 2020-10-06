@@ -7,7 +7,7 @@ import os
 import tempfile
 import sys
 
-from io import BytesIO
+from io import StringIO
 from teuthology.orchestra import run
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -16,7 +16,6 @@ from teuthology.task.common_fs_utils import generic_mkfs
 from teuthology.task.common_fs_utils import generic_mount
 from teuthology.task.common_fs_utils import default_image_name
 
-import six
 
 #V1 image unsupported but required for testing purposes
 os.environ["RBD_FORCE_ALLOW_V1"] = "1"
@@ -65,7 +64,7 @@ def create_image(ctx, config):
                                                                  size=size))
         args = [
                 'adjust-ulimits',
-                'ceph-coverage'.format(tdir=testdir),
+                'ceph-coverage',
                 '{tdir}/archive/coverage'.format(tdir=testdir),
                 'rbd',
                 '-p', 'rbd',
@@ -140,7 +139,7 @@ def clone_image(ctx, config):
                     ('clone', parent_spec, name)]:
             args = [
                     'adjust-ulimits',
-                    'ceph-coverage'.format(tdir=testdir),
+                    'ceph-coverage',
                     '{tdir}/archive/coverage'.format(tdir=testdir),
                     'rbd', '-p', 'rbd'
                     ]
@@ -165,7 +164,7 @@ def clone_image(ctx, config):
                         ('snap', 'rm', parent_spec)]:
                 args = [
                         'adjust-ulimits',
-                        'ceph-coverage'.format(tdir=testdir),
+                        'ceph-coverage',
                         '{tdir}/archive/coverage'.format(tdir=testdir),
                         'rbd', '-p', 'rbd'
                         ]
@@ -303,12 +302,12 @@ def canonical_path(ctx, role, path):
     representing the given role.  A canonical path contains no
     . or .. components, and includes no symbolic links.
     """
-    version_fp = BytesIO()
+    version_fp = StringIO()
     ctx.cluster.only(role).run(
         args=[ 'readlink', '-f', path ],
         stdout=version_fp,
         )
-    canonical_path = six.ensure_str(version_fp.getvalue()).rstrip('\n')
+    canonical_path = version_fp.getvalue().rstrip('\n')
     version_fp.close()
     return canonical_path
 
@@ -348,16 +347,16 @@ def run_xfstests(ctx, config):
     with parallel() as p:
         for role, properties in config.items():
             p.spawn(run_xfstests_one_client, ctx, role, properties)
-        exc_info = None
+        exc = None
         while True:
             try:
                 p.next()
             except StopIteration:
                 break
             except:
-                exc_info = sys.exc_info()
-        if exc_info:
-            six.reraise(exc_info[0], exc_info[1], exc_info[2])
+                exc = sys.exc_info()[1]
+        if exc is not None:
+            raise exc
     yield
 
 def run_xfstests_one_client(ctx, role, properties):

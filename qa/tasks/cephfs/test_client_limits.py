@@ -6,8 +6,8 @@ exceed the limits of how many caps/inodes they should hold.
 
 import logging
 from textwrap import dedent
-from unittest import SkipTest
 from teuthology.orchestra.run import CommandFailedError
+from tasks.ceph_test_case import TestTimeoutError
 from tasks.cephfs.cephfs_test_case import CephFSTestCase, needs_trimming
 from tasks.cephfs.fuse_mount import FuseMount
 import os
@@ -39,20 +39,22 @@ class TestClientLimits(CephFSTestCase):
         :param use_subdir: whether to put test files in a subdir or use root
         """
 
-        cache_size = open_files // 2
+        # Set MDS cache memory limit to a low value that will make the MDS to
+        # ask the client to trim the caps.
+        cache_memory_limit = "1K"
 
-        self.set_conf('mds', 'mds cache size', cache_size)
-        self.set_conf('mds', 'mds_recall_max_caps', open_files // 2)
-        self.set_conf('mds', 'mds_recall_warning_threshold', open_files)
-        self.fs.mds_fail_restart()
-        self.fs.wait_for_daemons()
+        self.config_set('mds', 'mds_cache_memory_limit', cache_memory_limit)
+        self.config_set('mds', 'mds_recall_max_caps', int(open_files/2))
+        self.config_set('mds', 'mds_recall_warning_threshold', open_files)
 
-        mds_min_caps_per_client = int(self.fs.get_config("mds_min_caps_per_client"))
-        mds_recall_warning_decay_rate = float(self.fs.get_config("mds_recall_warning_decay_rate"))
-        self.assertTrue(open_files >= mds_min_caps_per_client)
+        mds_min_caps_per_client = int(self.config_get('mds', "mds_min_caps_per_client"))
+        self.config_set('mds', 'mds_min_caps_working_set', mds_min_caps_per_client)
+        mds_max_caps_per_client = int(self.config_get('mds', "mds_max_caps_per_client"))
+        mds_recall_warning_decay_rate = float(self.config_get('mds', "mds_recall_warning_decay_rate"))
+        self.assertGreaterEqual(open_files, mds_min_caps_per_client)
 
         mount_a_client_id = self.mount_a.get_global_id()
-        path = "subdir/mount_a" if use_subdir else "mount_a"
+        path = "subdir" if use_subdir else "."
         open_proc = self.mount_a.open_n_background(path, open_files)
 
         # Client should now hold:
@@ -88,7 +90,7 @@ class TestClientLimits(CephFSTestCase):
             num_caps = self.get_session(mount_a_client_id)['num_caps']
             if num_caps <= mds_min_caps_per_client:
                 return True
-            elif num_caps < cache_size:
+            elif num_caps <= mds_max_caps_per_client:
                 return True
             else:
                 return False
@@ -107,6 +109,53 @@ class TestClientLimits(CephFSTestCase):
     def test_client_pin_mincaps(self):
         self._test_client_pin(True, 200)
 
+    def test_client_min_caps_working_set(self):
+        """
+        When a client has inodes pinned in its cache (open files), that the MDS
+        will not warn about the client not responding to cache pressure when
+        the number of caps is below mds_min_caps_working_set.
+        """
+
+        # Set MDS cache memory limit to a low value that will make the MDS to
+        # ask the client to trim the caps.
+        cache_memory_limit = "1K"
+        open_files = 400
+
+        self.config_set('mds', 'mds_cache_memory_limit', cache_memory_limit)
+        self.config_set('mds', 'mds_recall_max_caps', int(open_files/2))
+        self.config_set('mds', 'mds_recall_warning_threshold', open_files)
+        self.config_set('mds', 'mds_min_caps_working_set', open_files*2)
+
+        mds_min_caps_per_client = int(self.config_get('mds', "mds_min_caps_per_client"))
+        mds_recall_warning_decay_rate = float(self.config_get('mds', "mds_recall_warning_decay_rate"))
+        self.assertGreaterEqual(open_files, mds_min_caps_per_client)
+
+        mount_a_client_id = self.mount_a.get_global_id()
+        self.mount_a.open_n_background("subdir", open_files)
+
+        # Client should now hold:
+        # `open_files` caps for the open files
+        # 1 cap for root
+        # 1 cap for subdir
+        self.wait_until_equal(lambda: self.get_session(mount_a_client_id)['num_caps'],
+                              open_files + 2,
+                              timeout=600,
+                              reject_fn=lambda x: x > open_files + 2)
+
+        # We can also test that the MDS health warning for oversized
+        # cache is functioning as intended.
+        self.wait_for_health("MDS_CACHE_OVERSIZED", mds_recall_warning_decay_rate*2)
+
+        try:
+            # MDS should not be happy about that but it's not sending
+            # MDS_CLIENT_RECALL warnings because the client's caps are below
+            # mds_min_caps_working_set.
+            self.wait_for_health("MDS_CLIENT_RECALL", mds_recall_warning_decay_rate*2)
+        except TestTimeoutError:
+            pass
+        else:
+            raise RuntimeError("expected no client recall warning")
+
     def test_client_release_bug(self):
         """
         When a client has a bug (which we will simulate) preventing it from releasing caps,
@@ -116,12 +165,11 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            raise SkipTest("Require FUSE client to inject client release failure")
+            self.skipTest("Require FUSE client to inject client release failure")
 
         self.set_conf('client.{0}'.format(self.mount_a.client_id), 'client inject release failure', 'true')
         self.mount_a.teardown()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
         mount_a_client_id = self.mount_a.get_global_id()
 
         # Client A creates a file.  He will hold the write caps on the file, and later (simulated bug) fail
@@ -158,12 +206,11 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            raise SkipTest("Require FUSE client to inject client release failure")
+            self.skipTest("Require FUSE client to inject client release failure")
 
         self.set_conf('client', 'client inject fixed oldest tid', 'true')
         self.mount_a.teardown()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
 
         self.fs.mds_asok(['config', 'set', 'mds_max_completed_requests', '{0}'.format(max_requests)])
 
@@ -183,7 +230,7 @@ class TestClientLimits(CephFSTestCase):
 
         # The debug hook to inject the failure only exists in the fuse client
         if not isinstance(self.mount_a, FuseMount):
-            raise SkipTest("Require FUSE client to inject client release failure")
+            self.skipTest("Require FUSE client to inject client release failure")
 
         if mount_subdir:
             # fuse assigns a fix inode number (1) to root inode. But in mounting into
@@ -193,8 +240,7 @@ class TestClientLimits(CephFSTestCase):
             self.mount_a.run_shell(["mkdir", "subdir"])
             self.mount_a.umount_wait()
             self.set_conf('client', 'client mountpoint', '/subdir')
-            self.mount_a.mount()
-            self.mount_a.wait_until_mounted()
+            self.mount_a.mount_wait()
             root_ino = self.mount_a.path_to_ino(".")
             self.assertEqual(root_ino, 1);
 
@@ -240,11 +286,9 @@ class TestClientLimits(CephFSTestCase):
         That the MDS will not let a client sit above mds_max_caps_per_client caps.
         """
 
-        mds_min_caps_per_client = int(self.fs.get_config("mds_min_caps_per_client"))
+        mds_min_caps_per_client = int(self.config_get('mds', "mds_min_caps_per_client"))
         mds_max_caps_per_client = 2*mds_min_caps_per_client
-        self.set_conf('mds', 'mds_max_caps_per_client', mds_max_caps_per_client)
-        self.fs.mds_fail_restart()
-        self.fs.wait_for_daemons()
+        self.config_set('mds', 'mds_max_caps_per_client', mds_max_caps_per_client)
 
         self.mount_a.create_n_files("foo/", 3*mds_max_caps_per_client, sync=True)
 

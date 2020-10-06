@@ -14,8 +14,8 @@ def task(ctx, config):
       -tasks:
          ceph-ansible:
          s3a-hadoop:
-           maven-version: '3.3.9' (default)
-           hadoop-version: '2.7.3'
+           maven-version: '3.6.3' (default)
+           hadoop-version: '2.9.2'
            bucket-name: 's3atest' (default)
            access-key: 'anykey' (uses a default value)
            secret-key: 'secretkey' ( uses a default value)
@@ -40,8 +40,8 @@ def task(ctx, config):
 
     # get versions
     maven_major = config.get('maven-major', 'maven-3')
-    maven_version = config.get('maven-version', '3.3.9')
-    hadoop_ver = config.get('hadoop-version', '2.7.3')
+    maven_version = config.get('maven-version', '3.6.3')
+    hadoop_ver = config.get('hadoop-version', '2.9.2')
     bucket_name = config.get('bucket-name', 's3atest')
     access_key = config.get('access-key', 'EGAQRD2ULOIFKFSKCT4F')
     secret_key = config.get(
@@ -51,10 +51,13 @@ def task(ctx, config):
     # set versions for cloning the repo
     apache_maven = 'apache-maven-{maven_version}-bin.tar.gz'.format(
         maven_version=maven_version)
-    maven_link = 'http://apache.mirrors.lucidnetworks.net/maven/' + \
+    maven_link = 'http://www-us.apache.org/dist/maven/' + \
         '{maven_major}/{maven_version}/binaries/'.format(maven_major=maven_major, maven_version=maven_version) + apache_maven
     hadoop_git = 'https://github.com/apache/hadoop'
     hadoop_rel = 'hadoop-{ver} rel/release-{ver}'.format(ver=hadoop_ver)
+    if hadoop_ver == 'trunk':
+        # just checkout a new branch out of trunk
+        hadoop_rel = 'hadoop-ceph-trunk'
     install_prereq(remote)
     remote.run(
         args=[
@@ -133,7 +136,7 @@ def setup_user_bucket(client, dns_name, access_key, secret_key, bucket_name, tes
             'create',
             run.Raw('--uid'),
             's3a',
-            run.Raw('--display-name=s3a cephtests'),
+            run.Raw('--display-name="s3a cephtests"'),
             run.Raw('--access-key={access_key}'.format(access_key=access_key)),
             run.Raw('--secret-key={secret_key}'.format(secret_key=secret_key)),
             run.Raw('--email=s3a@ceph.com'),
@@ -168,12 +171,7 @@ for bucket in conn.get_all_buckets():
         print(bucket.name + "\t" + bucket.creation_date)
 """.format(access_key=access_key, secret_key=secret_key, dns_name=dns_name, bucket_name=bucket_name)
     py_bucket_file = '{testdir}/create_bucket.py'.format(testdir=testdir)
-    misc.sudo_write_file(
-        remote=client,
-        path=py_bucket_file,
-        data=create_bucket,
-        perms='0744',
-        )
+    client.sudo_write_file(py_bucket_file, create_bucket, mode='0744')
     client.run(
         args=[
             'cat',
@@ -280,10 +278,6 @@ def configure_s3a(client, dns_name, access_key, secret_key, bucket_name, testdir
 </configuration>
 """.format(name=dns_name, bucket_name=bucket_name, access_key=access_key, secret_key=secret_key)
     config_path = testdir + '/hadoop/hadoop-tools/hadoop-aws/src/test/resources/auth-keys.xml'
-    misc.write_file(
-        remote=client,
-        path=config_path,
-        data=config_template,
-    )
+    client.write_file(config_path, config_template)
     # output for debug
     client.run(args=['cat', config_path])
