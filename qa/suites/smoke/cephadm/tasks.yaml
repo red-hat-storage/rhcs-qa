@@ -1,0 +1,30 @@
+overrides:
+  ceph:
+    conf:
+      mgr:
+        debug mgr: 20
+        debug ms: 1
+      mon:
+        debug mon: 20
+        debug ms: 1
+        debug paxos: 20
+      osd:
+        debug filestore: 20
+        debug journal: 20
+        debug ms: 1
+        debug osd: 25
+    log-whitelist:
+    - \(MDS_ALL_DOWN\)
+    - \(MDS_UP_LESS_THAN_MAX\)
+tasks:
+- rhcephadm:
+- rhcephadm.shell:
+    mon.a:
+      - ceph status
+      - ceph orch status
+      - ceph orch ps
+      - ceph orch ls
+      - ceph orch host ls
+      - ceph orch device ls
+      - ceph health detail
+      - ceph osd tree
