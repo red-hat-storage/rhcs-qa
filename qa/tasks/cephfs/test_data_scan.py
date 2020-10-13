@@ -381,8 +381,7 @@ class TestDataScan(CephFSTestCase):
         log.info(str(self.mds_cluster.status()))
 
         # Mount a client
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
 
         # See that the files are present and correct
         errors = workload.validate()
@@ -475,8 +474,7 @@ class TestDataScan(CephFSTestCase):
         # Start filesystem back up, observe that the file appears to be gone in an `ls`
         self.fs.mds_restart()
         self.fs.wait_for_daemons()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
         files = self.mount_a.run_shell(["ls", "subdir/"]).stdout.getvalue().strip().split("\n")
         self.assertListEqual(sorted(files), sorted(list(set(file_names) - set([victim_dentry]))))
 
@@ -496,8 +494,7 @@ class TestDataScan(CephFSTestCase):
         # and points to the correct file data.
         self.fs.mds_restart()
         self.fs.wait_for_daemons()
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
         out = self.mount_a.run_shell(["cat", "subdir/{0}".format(victim_dentry)]).stdout.getvalue().strip()
         self.assertEqual(out, victim_dentry)
 
@@ -549,7 +546,7 @@ class TestDataScan(CephFSTestCase):
             pgs_to_files[pgid].append(file_path)
             log.info("{0}: {1}".format(file_path, pgid))
 
-        pg_count = self.fs.get_pgs_per_fs_pool()
+        pg_count = self.fs.pgs_per_fs_pool
         for pg_n in range(0, pg_count):
             pg_str = "{0}.{1}".format(self.fs.get_data_pool_id(), pg_n)
             out = self.fs.data_scan(["pg_files", "mydir", pg_str])
@@ -607,8 +604,7 @@ class TestDataScan(CephFSTestCase):
         self.fs.mds_restart()
         self.fs.wait_for_daemons()
 
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
 
         # link count was adjusted?
         file1_nlink = self.mount_a.path_to_nlink("testdir1/file1")

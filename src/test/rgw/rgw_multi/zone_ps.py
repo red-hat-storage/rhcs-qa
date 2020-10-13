@@ -5,8 +5,8 @@ import hmac
 import hashlib
 import base64
 import xmltodict
-from six.moves import http_client
-from six.moves.urllib import parse as urlparse
+from http import client as http_client
+from urllib import parse as urlparse
 from time import gmtime, strftime
 from .multisite import Zone
 import boto3
@@ -49,6 +49,9 @@ class PSZone(Zone):  # pylint: disable=too-many-ancestors
     def tier_type(self):
         return "pubsub"
 
+    def syncs_from(self, zone_name):
+        return zone_name == self.master_zone.name
+
     def create(self, cluster, args=None, **kwargs):
         if args is None:
             args = ''
@@ -61,13 +64,6 @@ class PSZone(Zone):  # pylint: disable=too-many-ancestors
 
 
 NO_HTTP_BODY = ''
-
-
-def print_connection_info(conn):
-    """print connection details"""
-    print('Endpoint: ' + conn.host + ':' + str(conn.port))
-    print('AWS Access Key:: ' + conn.aws_access_key_id)
-    print('AWS Secret Key:: ' + conn.aws_secret_access_key)
 
 
 def make_request(conn, method, resource, parameters=None, sign_parameters=False, extra_parameters=None):

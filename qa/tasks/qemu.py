@@ -170,10 +170,10 @@ def generate_iso(ctx, config):
         user_data = user_data.format(
             ceph_branch=ctx.config.get('branch'),
             ceph_sha1=ctx.config.get('sha1'))
-        teuthology.write_file(remote, userdata_path, user_data)
+        remote.write_file(userdata_path, user_data)
 
         with open(os.path.join(src_dir, 'metadata.yaml'), 'rb') as f:
-            teuthology.write_file(remote, metadata_path, f)
+            remote.write_file(metadata_path, f)
 
         test_file = '{tdir}/qemu/{client}.test.sh'.format(tdir=testdir, client=client)
 
@@ -264,7 +264,7 @@ def download_image(ctx, config):
                 )
 
 
-def _setup_nfs_mount(remote, client, mount_dir):
+def _setup_nfs_mount(remote, client, service_name, mount_dir):
     """
     Sets up an nfs mount on the remote that the guest can use to
     store logs. This nfs mount is also used to touch a file
@@ -284,8 +284,10 @@ def _setup_nfs_mount(remote, client, mount_dir):
     export = "{dir} *(rw,no_root_squash,no_subtree_check,insecure)".format(
         dir=export_dir
     )
+    log.info("Deleting export from /etc/exports...")
     remote.run(args=[
-        'sudo', 'sed', '-i', '/^\/export\//d', "/etc/exports",
+        'sudo', 'sed', '-i', "\|{export_dir}|d".format(export_dir=export_dir),
+        '/etc/exports'
     ])
     remote.run(args=[
         'echo', export, run.Raw("|"),
@@ -295,10 +297,10 @@ def _setup_nfs_mount(remote, client, mount_dir):
     if remote.os.package_type == "deb":
         remote.run(args=['sudo', 'service', 'nfs-kernel-server', 'restart'])
     else:
-        remote.run(args=['sudo', 'systemctl', 'restart', 'nfs-server'])
+        remote.run(args=['sudo', 'systemctl', 'restart', service_name])
 
 
-def _teardown_nfs_mount(remote, client):
+def _teardown_nfs_mount(remote, client, service_name):
     """
     Tears down the nfs mount on the remote used for logging and reporting the
     status of the tests being ran in the guest.
@@ -312,19 +314,16 @@ def _teardown_nfs_mount(remote, client):
         ])
     else:
         remote.run(args=[
-            'sudo', 'systemctl', 'stop', 'nfs-server'
+            'sudo', 'systemctl', 'stop', service_name
         ])
     log.info("Unmounting exported directory...")
     remote.run(args=[
         'sudo', 'umount', export_dir
     ])
-    log.info("Deleting exported directory...")
-    remote.run(args=[
-        'sudo', 'rm', '-r', '/export'
-    ])
     log.info("Deleting export from /etc/exports...")
     remote.run(args=[
-        'sudo', 'sed', '-i', '$ d', '/etc/exports'
+        'sudo', 'sed', '-i', "\|{export_dir}|d".format(export_dir=export_dir),
+        '/etc/exports'
     ])
     log.info("Starting NFS...")
     if remote.os.package_type == "deb":
@@ -333,7 +332,7 @@ def _teardown_nfs_mount(remote, client):
         ])
     else:
         remote.run(args=[
-            'sudo', 'systemctl', 'start', 'nfs-server'
+            'sudo', 'systemctl', 'start', service_name
         ])
 
 
@@ -352,9 +351,13 @@ def run_qemu(ctx, config):
                 ]
             )
 
+        nfs_service_name = 'nfs'
+        if remote.os.name in ['rhel', 'centos'] and float(remote.os.version) >= 8:
+            nfs_service_name = 'nfs-server'
+
         # make an nfs mount to use for logging and to
         # allow to test to tell teuthology the tests outcome
-        _setup_nfs_mount(remote, client, log_dir)
+        _setup_nfs_mount(remote, client, nfs_service_name, log_dir)
 
         # Hack to make sure /dev/kvm permissions are set correctly
         # See http://tracker.ceph.com/issues/17977 and
@@ -441,7 +444,7 @@ def run_qemu(ctx, config):
                 )
 
             # teardown nfs mount
-            _teardown_nfs_mount(remote, client)
+            _teardown_nfs_mount(remote, client, nfs_service_name)
             # check for test status
             remote.run(
                 args=[
@@ -452,6 +455,12 @@ def run_qemu(ctx, config):
                         ),
                     ],
                 )
+        log.info("Deleting exported directory...")
+        for client in config.keys():
+            (remote,) = ctx.cluster.only(client).remotes.keys()
+            remote.run(args=[
+                'sudo', 'rm', '-r', '/export'
+            ])
 
 
 @contextlib.contextmanager

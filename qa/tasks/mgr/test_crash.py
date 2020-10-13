@@ -1,10 +1,9 @@
-
-
-from .mgr_test_case import MgrTestCase
-
 import json
 import logging
 import datetime
+
+from .mgr_test_case import MgrTestCase
+
 
 log = logging.getLogger(__name__)
 UUID = 'd5775432-0742-44a3-a435-45095e32e6b1'
@@ -14,6 +13,7 @@ DATEFMT = '%Y-%m-%d %H:%M:%S.%f'
 class TestCrash(MgrTestCase):
 
     def setUp(self):
+        super(TestCrash, self).setUp()
         self.setup_mgrs()
         self._load_module('crash')
 
@@ -73,7 +73,7 @@ class TestCrash(MgrTestCase):
             self.assertIn(crash['crash_id'], retstr)
 
     def test_rm(self):
-        crashid = list(self.crashes.keys())[0]
+        crashid = next(iter(self.crashes.keys()))
         self.assertEqual(
             0,
             self.mgr_cluster.mon_manager.raw_cluster_cmd_result(

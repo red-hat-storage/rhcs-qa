@@ -1,11 +1,9 @@
-import sys
 import logging
 import signal
 from textwrap import dedent
 from tasks.cephfs.fuse_mount import FuseMount
 from tasks.cephfs.cephfs_test_case import CephFSTestCase
 from teuthology.orchestra.run import CommandFailedError, Raw
-from unittest import SkipTest
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +43,7 @@ class TestSnapshots(CephFSTestCase):
         check snaptable transcation
         """
         if not isinstance(self.mount_a, FuseMount):
-            raise SkipTest("Require FUSE client to forcibly kill mount")
+            self.skipTest("Require FUSE client to forcibly kill mount")
 
         self.fs.set_allow_new_snaps(True);
         self.fs.set_max_mds(2)
@@ -56,7 +54,7 @@ class TestSnapshots(CephFSTestCase):
         # setup subtrees
         self.mount_a.run_shell(["mkdir", "-p", "d1/dir"])
         self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
-        self.wait_until_true(lambda: self._check_subtree(1, '/d1', status=status), timeout=30)
+        self._wait_subtrees([("/d1", 1)], rank=1, path="/d1")
 
         last_created = self._get_last_created_snap(rank=0,status=status)
 
@@ -132,8 +130,7 @@ class TestSnapshots(CephFSTestCase):
                 else:
                     self.assertGreater(self._get_last_created_snap(rank=0), last_created)
 
-            self.mount_a.mount()
-            self.mount_a.wait_until_mounted()
+            self.mount_a.mount_wait()
 
         self.mount_a.run_shell(["rmdir", Raw("d1/dir/.snap/*")])
 
@@ -174,8 +171,7 @@ class TestSnapshots(CephFSTestCase):
                 else:
                     self.assertGreater(self._get_last_created_snap(rank=0), last_created)
 
-            self.mount_a.mount()
-            self.mount_a.wait_until_mounted()
+            self.mount_a.mount_wait()
 
         self.mount_a.run_shell(["rmdir", Raw("d1/dir/.snap/*")])
 
@@ -190,9 +186,9 @@ class TestSnapshots(CephFSTestCase):
         rank1 = self.fs.get_rank(rank=1, status=status)
         self.fs.rank_freeze(True, rank=0)
         self.fs.rank_freeze(True, rank=1)
-        self.fs.rank_asok(['config', 'set', "mds_kill_mdstable_at", "8".format(i)], rank=0, status=status)
-        self.fs.rank_asok(['config', 'set', "mds_kill_mdstable_at", "3".format(i)], rank=1, status=status)
-        proc = self.mount_a.run_shell(["mkdir", "d1/dir/.snap/s4".format(i)], wait=False)
+        self.fs.rank_asok(['config', 'set', "mds_kill_mdstable_at", "8"], rank=0, status=status)
+        self.fs.rank_asok(['config', 'set', "mds_kill_mdstable_at", "3"], rank=1, status=status)
+        proc = self.mount_a.run_shell(["mkdir", "d1/dir/.snap/s4"], wait=False)
         self.wait_until_true(lambda: "laggy_since" in self.fs.get_rank(rank=1), timeout=grace*2);
         self.delete_mds_coredump(rank1['name']);
 
@@ -217,8 +213,7 @@ class TestSnapshots(CephFSTestCase):
         self.wait_until_true(lambda: len(self._get_pending_snap_update(rank=0)) == 0, timeout=30)
         self.assertEqual(self._get_last_created_snap(rank=0), last_created)
 
-        self.mount_a.mount()
-        self.mount_a.wait_until_mounted()
+        self.mount_a.mount_wait()
 
     def test_snapclient_cache(self):
         """
@@ -235,9 +230,7 @@ class TestSnapshots(CephFSTestCase):
         self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
         self.mount_a.setfattr("d0/d1", "ceph.dir.pin", "1")
         self.mount_a.setfattr("d0/d2", "ceph.dir.pin", "2")
-        self.wait_until_true(lambda: self._check_subtree(2, '/d0/d2', status=status), timeout=30)
-        self.wait_until_true(lambda: self._check_subtree(1, '/d0/d1', status=status), timeout=5)
-        self.wait_until_true(lambda: self._check_subtree(0, '/d0', status=status), timeout=5)
+        self._wait_subtrees([("/d0", 0), ("/d0/d1", 1), ("/d0/d2", 2)], rank="all", status=status, path="/d0")
 
         def _check_snapclient_cache(snaps_dump, cache_dump=None, rank=0):
             if cache_dump is None:
@@ -346,8 +339,7 @@ class TestSnapshots(CephFSTestCase):
             self.assertEqual(snaps_dump["last_created"], rank0_cache["last_created"])
             self.assertTrue(_check_snapclient_cache(snaps_dump, cache_dump=rank0_cache));
 
-            self.mount_a.mount()
-            self.mount_a.wait_until_mounted()
+            self.mount_a.mount_wait()
 
         self.mount_a.run_shell(["rmdir", Raw("d0/d2/dir/.snap/*")])
 
@@ -359,11 +351,10 @@ class TestSnapshots(CephFSTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.run_shell(["mkdir", "-p", "d0/d1"])
+        self.mount_a.run_shell(["mkdir", "-p", "d0/d1/empty"])
         self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
         self.mount_a.setfattr("d0/d1", "ceph.dir.pin", "1")
-        self.wait_until_true(lambda: self._check_subtree(1, '/d0/d1', status=status), timeout=30)
-        self.wait_until_true(lambda: self._check_subtree(0, '/d0', status=status), timeout=5)
+        self._wait_subtrees([("/d0", 0), ("/d0/d1", 1)], rank="all", status=status, path="/d0")
 
         self.mount_a.write_test_pattern("d0/d1/file_a", 8 * 1024 * 1024)
         self.mount_a.run_shell(["mkdir", "d0/.snap/s1"])
@@ -381,11 +372,10 @@ class TestSnapshots(CephFSTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.run_shell(["mkdir", "d0", "d1"])
+        self.mount_a.run_shell_payload("mkdir -p {d0,d1}/empty")
         self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
         self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
-        self.wait_until_true(lambda: self._check_subtree(1, '/d1', status=status), timeout=30)
-        self.wait_until_true(lambda: self._check_subtree(0, '/d0', status=status), timeout=5)
+        self._wait_subtrees([("/d0", 0), ("/d1", 1)], rank=0, status=status)
 
         self.mount_a.run_shell(["mkdir", "d0/d3"])
         self.mount_a.run_shell(["mkdir", "d0/.snap/s1"])
@@ -409,12 +399,11 @@ class TestSnapshots(CephFSTestCase):
         self.fs.set_max_mds(2)
         status = self.fs.wait_for_daemons()
 
-        self.mount_a.run_shell(["mkdir", "d0", "d1"])
+        self.mount_a.run_shell_payload("mkdir -p {d0,d1}/empty")
 
         self.mount_a.setfattr("d0", "ceph.dir.pin", "0")
         self.mount_a.setfattr("d1", "ceph.dir.pin", "1")
-        self.wait_until_true(lambda: self._check_subtree(1, '/d1', status=status), timeout=30)
-        self.wait_until_true(lambda: self._check_subtree(0, '/d0', status=status), timeout=5)
+        self._wait_subtrees([("/d0", 0), ("/d1", 1)], rank=0, status=status)
 
         self.mount_a.run_python(dedent("""
             import os

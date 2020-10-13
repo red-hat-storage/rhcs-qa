@@ -78,8 +78,7 @@ def run_rbd_map(remote, image, iodepth):
     iodepth = max(iodepth, 128)  # RBD_QUEUE_DEPTH_DEFAULT
     dev = remote.sh(['sudo', 'rbd', 'device', 'map', '-o',
                      'queue_depth={}'.format(iodepth), image]).rstrip('\n')
-    teuthology.sudo_write_file(
-        remote,
+    remote.sudo_write_file(
         '/sys/block/{}/queue/nr_requests'.format(os.path.basename(dev)),
         str(iodepth))
     return dev
@@ -124,7 +123,7 @@ def run_fio(remote, config, rbd_test_dir):
 
     formats=[1,2]
     features=[['layering'],['striping'],['exclusive-lock','object-map']]
-    fio_version='3.18'
+    fio_version='3.16'
     if config.get('formats'):
         formats=config['formats']
     if config.get('features'):
@@ -157,6 +156,8 @@ def run_fio(remote, config, rbd_test_dir):
                         '--image', rbd_name,
                         '--image-format', '{f}'.format(f=frmt)]
            map(lambda x: create_args.extend(['--image-feature', x]), feature)
+           if config.get('thick-provision'):
+               create_args.append('--thick-provision')
            remote.run(args=create_args)
            remote.run(args=['rbd', 'info', rbd_name])
            if ioengine != 'rbd':

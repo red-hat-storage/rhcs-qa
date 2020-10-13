@@ -3,9 +3,12 @@ import time
 import requests
 import errno
 import logging
+import sys
+
 from teuthology.exceptions import CommandFailedError
 
-from tasks.mgr.mgr_test_case import MgrTestCase
+from .mgr_test_case import MgrTestCase
+
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ class TestModuleSelftest(MgrTestCase):
     MGRS_REQUIRED = 1
 
     def setUp(self):
+        super(TestModuleSelftest, self).setUp()
         self.setup_mgrs()
 
     def _selftest_plugin(self, module_name):
@@ -48,10 +52,11 @@ class TestModuleSelftest(MgrTestCase):
         self._selftest_plugin("influx")
 
     def test_diskprediction_local(self):
+        if sys.version_info >= (3, 8):
+            # https://tracker.ceph.com/issues/45147
+            python_version = f'python {sys.version_info.major}.{sys.version_info.minor}'
+            self.skipTest(f'{python_version} not compatible with diskprediction_local')
         self._selftest_plugin("diskprediction_local")
-
-    def test_diskprediction_cloud(self):
-        self._selftest_plugin("diskprediction_cloud")
 
     def test_telegraf(self):
         self._selftest_plugin("telegraf")
@@ -77,6 +82,10 @@ class TestModuleSelftest(MgrTestCase):
 
     def test_crash(self):
         self._selftest_plugin("crash")
+
+    def test_orchestrator(self):
+        self._selftest_plugin("orchestrator")
+
 
     def test_selftest_config_update(self):
         """
@@ -130,7 +139,7 @@ class TestModuleSelftest(MgrTestCase):
 
         # Stop ceph-mgr while we synthetically create a pre-mimic
         # configuration scenario
-        for mgr_id in list(self.mgr_cluster.mgr_daemons.keys()):
+        for mgr_id in self.mgr_cluster.mgr_daemons.keys():
             self.mgr_cluster.mgr_stop(mgr_id)
             self.mgr_cluster.mgr_fail(mgr_id)
 
@@ -162,7 +171,7 @@ class TestModuleSelftest(MgrTestCase):
 
         # Bring mgr daemons back online, the one that goes active
         # should be doing the upgrade.
-        for mgr_id in list(self.mgr_cluster.mgr_daemons.keys()):
+        for mgr_id in self.mgr_cluster.mgr_daemons.keys():
             self.mgr_cluster.mgr_restart(mgr_id)
 
         # Wait for a new active 
@@ -300,7 +309,7 @@ class TestModuleSelftest(MgrTestCase):
             "error": "ERR"
         }
         self._load_module("selftest")
-        for priority in list(priority_map.keys()):
+        for priority in priority_map.keys():
             message = "foo bar {}".format(priority)
             log_message = "[{}] {}".format(priority_map[priority], message)
             # Check for cluster/audit logs:

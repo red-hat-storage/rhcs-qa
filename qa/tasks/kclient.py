@@ -22,12 +22,16 @@ def task(ctx, config):
     this operation on. This lets you e.g. set up one client with
     ``ceph-fuse`` and another with ``kclient``.
 
+    ``brxnet`` should be a Private IPv4 Address range, default range is
+    [192.168.0.0/16]
+
     Example that mounts all clients::
 
         tasks:
         - ceph:
         - kclient:
         - interactive:
+        - brxnet: [192.168.0.0/16]
 
     Example that uses both ``kclient` and ``ceph-fuse``::
 
@@ -72,12 +76,8 @@ def task(ctx, config):
 
     test_dir = misc.get_testdir(ctx)
 
-    # Assemble mon addresses
-    remotes_and_roles = list(ctx.cluster.remotes.items())
-    roles = [roles for (remote_, roles) in remotes_and_roles]
-    ips = [remote_.ssh.get_transport().getpeername()[0]
-           for (remote_, _) in remotes_and_roles]
-    mons = list(misc.get_mons(roles, ips).values())
+    for id_, remote in clients:
+        KernelMount.cleanup_stale_netnses_and_bridge(remote)
 
     mounts = {}
     for id_, remote in clients:
@@ -89,15 +89,11 @@ def task(ctx, config):
             continue
 
         kernel_mount = KernelMount(
-            ctx,
-            mons,
-            test_dir,
-            id_,
-            remote,
-            ctx.teuthology_config.get('ipmi_user', None),
-            ctx.teuthology_config.get('ipmi_password', None),
-            ctx.teuthology_config.get('ipmi_domain', None)
-        )
+            ctx=ctx,
+            test_dir=test_dir,
+            client_id=id_,
+            client_remote=remote,
+            brxnet=ctx.teuthology_config.get('brxnet', None))
 
         mounts[id_] = kernel_mount
 
@@ -120,6 +116,9 @@ def task(ctx, config):
                     log.warning("Ordinary umount failed, forcing...")
                     forced = True
                     mount.umount_wait(force=True)
+
+        for id_, remote in clients:
+            KernelMount.cleanup_stale_netnses_and_bridge(remote)
 
         return forced
 

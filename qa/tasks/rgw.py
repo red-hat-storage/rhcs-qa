@@ -84,7 +84,7 @@ def start_rgw(ctx, config, clients):
             '/var/log/ceph/rgw.{client_with_cluster}.log'.format(client_with_cluster=client_with_cluster),
             '--rgw_ops_log_socket_path',
             '{tdir}/rgw.opslog.{client_with_cluster}.sock'.format(tdir=testdir,
-                                                     client_with_cluster=client_with_cluster)
+                                                     client_with_cluster=client_with_cluster),
 	    ])
 
         keystone_role = client_config.get('use-keystone-role', None)
@@ -103,18 +103,52 @@ def start_rgw(ctx, config, clients):
                                                 kport=keystone_port),
                 ])
 
-        if client_config.get('dns-name'):
+
+        if client_config.get('dns-name') is not None:
             rgw_cmd.extend(['--rgw-dns-name', endpoint.dns_name])
-        if client_config.get('dns-s3website-name'):
+        if client_config.get('dns-s3website-name') is not None:
             rgw_cmd.extend(['--rgw-dns-s3website-name', endpoint.website_dns_name])
+
+
+        vault_role = client_config.get('use-vault-role', None)
+        barbican_role = client_config.get('use-barbican-role', None)
+
+        token_path = teuthology.get_testdir(ctx) + '/vault-token'
+        if barbican_role is not None:
+            if not hasattr(ctx, 'barbican'):
+                raise ConfigError('rgw must run after the barbican task')
+
+            barbican_host, barbican_port = \
+                ctx.barbican.endpoints[barbican_role]
+            log.info("Use barbican url=%s:%s", barbican_host, barbican_port)
+
+            rgw_cmd.extend([
+                '--rgw_barbican_url',
+                'http://{bhost}:{bport}'.format(bhost=barbican_host,
+                                                bport=barbican_port),
+                ])
+        elif vault_role is not None:
+            if not ctx.vault.root_token:
+                raise ConfigError('vault: no "root_token" specified')
+            # create token on file
+            ctx.cluster.only(client).run(args=['echo', '-n', ctx.vault.root_token, run.Raw('>'), token_path])
+            log.info("Token file content")
+            ctx.cluster.only(client).run(args=['cat', token_path])
+            log.info("Restrict access to token file")
+            ctx.cluster.only(client).run(args=['chmod', '600', token_path])
+            ctx.cluster.only(client).run(args=['sudo', 'chown', 'ceph', token_path])
+
+            rgw_cmd.extend([
+                '--rgw_crypt_vault_addr', "{}:{}".format(*ctx.vault.endpoints[vault_role]),
+                '--rgw_crypt_vault_token_file', token_path
+            ])
 
         rgw_cmd.extend([
             '--foreground',
             run.Raw('|'),
             'sudo',
             'tee',
-            '/var/log/ceph/rgw.{client_with_cluster}.stdout'.format(tdir=testdir,
-                                                       client_with_cluster=client_with_cluster),
+            '/var/log/ceph/rgw.{client_with_cluster}.stdout'.format(client_with_cluster=client_with_cluster),
             run.Raw('2>&1'),
             ])
 
@@ -162,6 +196,7 @@ def start_rgw(ctx, config, clients):
                                                              client=client_with_cluster),
                     ],
                 )
+            ctx.cluster.only(client).run(args=['rm', '-f', token_path])
 
 def assign_endpoints(ctx, config, default_cert):
     role_endpoints = {}
@@ -188,9 +223,8 @@ def assign_endpoints(ctx, config, default_cert):
             dns_name += remote.hostname
 
         website_dns_name = client_config.get('dns-s3website-name')
-        if website_dns_name:
-            if len(website_dns_name) == 0 or website_dns_name.endswith('.'):
-                website_dns_name += remote.hostname
+        if website_dns_name is not None and (len(website_dns_name) == 0 or website_dns_name.endswith('.')):
+            website_dns_name += remote.hostname
 
         role_endpoints[role] = RGWEndpoint(remote.hostname, port, ssl_certificate, dns_name, website_dns_name)
 
