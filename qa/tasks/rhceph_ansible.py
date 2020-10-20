@@ -119,6 +119,51 @@ class CephAnsible(Task):
         if 'ceph_dev_branch' not in vars:
             vars['ceph_dev_branch'] = ctx.config.get('branch', 'master')
 
+    def dashboard_prequisites(self):
+        """
+        Enable all dashboard pre-requisites
+            1) Container tool login(podman)
+            2) Return dashboard images
+        Returns:
+            dashboard_info
+        """
+        creds = teuth_config.get('registries', {})
+        (ceph_first_mon,) = iter(self.ctx.cluster.only(misc.get_first_mon(
+            self.ctx, self.config, self.cluster_name)).remotes.keys())
+
+        container = "docker"
+        if ceph_first_mon.os.version.startswith('8'):
+            container = "podman"
+
+        # container tool login
+        for remote, _ in list(self.ctx.cluster.remotes.items()):
+            if "docker" in container:
+                remote.sh("sudo yum install -y docker")
+                remote.sh("sudo systemctl restart docker")
+            for registry, cred in creds.items():
+                remote.sh(
+                    "sudo {container} login -p {passwd} -u {user} {registry}".format(
+                        container=container,
+                        passwd=cred.get('password'),
+                        user=cred.get('username'),
+                        registry=registry
+                    )
+                )
+
+        # Look for dashboard information in <suite_path>/rh/downstream.yaml
+        ds_yaml = os.path.join(
+            teuth_config.suite_path,
+            'rh',
+            'downstream.yaml',
+        )
+        dashboard_info = yaml.safe_load(open(ds_yaml))
+        dashboard = dashboard_info.get('dashboard')
+
+        for build, images in dashboard.items():
+            if build in self.rhbuild:
+                return images
+        return dict()
+
     def setup(self):
         """
         Method to setup ansible environment to run playbook
@@ -146,6 +191,11 @@ class CephAnsible(Task):
         # everything from vars in config go into group_vars/all file
         extra_vars = dict()
         extra_vars.update(self.config.get('vars', dict()))
+
+        if extra_vars.get('dashboard_enabled'):
+            # db - dashboard
+            db_container_info = self.dashboard_prequisites()
+            extra_vars.update(db_container_info)
 
         # support rgw multi-site single realm vars
         extra_vars.update(self.check_multi_site_attributes(extra_vars))

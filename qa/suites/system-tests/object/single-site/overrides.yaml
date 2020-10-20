@@ -1,3 +1,5 @@
+roles:
+- [grafana-server.0]
 overrides:
   rhceph_ansible:
     exec:
@@ -13,7 +15,8 @@ overrides:
       ceph_stable: true
       ceph_stable_rh_storage: true
       ceph_test: true
-      dashboard_enabled: false
+      dashboard_enabled: true
+      copy_admin_key: true
       journal_size: 1024
       osd_auto_discovery: false
       osd_objectstore: bluestore

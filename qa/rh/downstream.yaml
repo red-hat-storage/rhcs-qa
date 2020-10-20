@@ -38,7 +38,6 @@ pkgs:
     - python-rbd
     - python-cephfs
     - rbd-mirror
-
 rhel_repos:
   '7':
     - rhel-7-server-rpms
@@ -49,3 +48,13 @@ rhel_repos:
     - rhel-8-for-x86_64-appstream-rpms
     - rhel-8-for-x86_64-baseos-rpms
     - ansible-2.9-for-rhel-8-x86_64-rpms
+dashboard:
+  '4':
+    dashboard_admin_user: admin
+    dashboard_admin_password: p@ssw0rd
+    grafana_admin_user: admin
+    grafana_admin_password: p@ssw0rd
+    node_exporter_container_image: registry.redhat.io/openshift4/ose-prometheus-node-exporter:v4.1
+    grafana_container_image: registry.redhat.io/rhceph/rhceph-4-dashboard-rhel8:4
+    prometheus_container_image: registry.redhat.io/openshift4/ose-prometheus:4.1
+    alertmanager_container_image: registry.redhat.io/openshift4/ose-prometheus-alertmanager:4.1
