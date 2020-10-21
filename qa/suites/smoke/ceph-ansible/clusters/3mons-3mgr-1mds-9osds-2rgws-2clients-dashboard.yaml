@@ -1,5 +1,0 @@
-roles:
-- [mon.a, mgr.z, mds.a, osd.1, osd.2, osd.0, client.0, rgw.0]
-- [mon.b, mgr.y, osd.3, osd.4, osd.5, client.1, rgw.1]
-- [mon.c, mgr.x, osd.7, osd.6, osd.8]
-- [grafana-server.0]
