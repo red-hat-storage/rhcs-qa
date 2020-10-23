@@ -164,6 +164,15 @@ class CephAnsible(Task):
                 return images
         return dict()
 
+    def install_psi_packages(self):
+        """
+        Install packages for PSI systems
+        """
+        for remote in self.ctx.cluster.remotes.keys():
+            if remote.is_vm and self.ctx.config.get('redhat'):
+                # Add packages to be installed on psi nodes
+                remote.sh("sudo yum install -y redhat-lsb wget git")
+
     def setup(self):
         """
         Method to setup ansible environment to run playbook
@@ -172,6 +181,9 @@ class CephAnsible(Task):
 
         # generate hosts file based on test config
         self.generate_hosts_file()
+
+        # install packages on PSI systems
+        self.install_psi_packages()
 
         # generate playbook file if it exists in config
         self.playbook_file = None
@@ -226,10 +238,11 @@ class CephAnsible(Task):
         Method to start firewalld
         """
         for remote, roles in self.each_cluster.remotes.items():
-            cmd = 'sudo service firewalld start'
-            remote.run(
-                args=cmd, stdout=StringIO(),
-            )
+            # install firewalld
+            remote.sh("sudo yum install -y firewalld")
+            remote.sh("sudo systemctl enable firewalld")
+            remote.sh('sudo service firewalld start')
+            remote.sh("sudo systemctl status firewalld")
 
     def execute_playbook(self):
         """
