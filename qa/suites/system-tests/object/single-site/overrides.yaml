@@ -21,3 +21,6 @@ overrides:
       osd_auto_discovery: false
       osd_objectstore: bluestore
       osd_scenario: collocated
+      ceph_conf_overrides:
+        global:
+          osd_pool_default_pg_autoscale_mode: on
