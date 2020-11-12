@@ -152,9 +152,8 @@ class CephAnsible(Task):
 
         # Look for dashboard information in <suite_path>/rh/downstream.yaml
         ds_yaml = os.path.join(
-            teuth_config.suite_path,
-            'rh',
-            'downstream.yaml',
+            teuth_config.get('ds_yaml_dir'),
+            '{}.yaml'.format(self.rhbuild),
         )
         dashboard_info = yaml.safe_load(open(ds_yaml))
         dashboard = dashboard_info.get('dashboard')
