@@ -1,0 +1,18 @@
+tasks:
+- ssh-keys: null
+- install.ship_utilities:
+- rhceph_ansible: null
+- nfs_ganesha_rgw_v2:
+    test-name: test_on_nfs_io_delete
+    nfs-version: 4
+    mount-dir: ganesha-mount
+    config:
+        'basedir_count': 5
+        'subdir_count': 10
+        'file_count': 1500
+        'objects_size_range':
+            'min': 5
+            'max': 15
+        io_op_config:
+            create: true
+            delete: true

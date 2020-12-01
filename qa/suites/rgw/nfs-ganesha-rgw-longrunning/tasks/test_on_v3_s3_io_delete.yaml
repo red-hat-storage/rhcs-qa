@@ -1,0 +1,17 @@
+tasks:
+- ssh-keys: null
+- install.ship_utilities:
+- rhceph_ansible: null
+- nfs_ganesha_rgw_v2:
+    test-name: test_on_s3_io_delete
+    nfs-version: 3
+    mount-dir: ganesha-mount
+    config:
+        bucket_count: 2
+        objects_count: 5000
+        objects_size_range:
+            min: 5
+            max: 15
+            io_op_config:
+                create: true
+                delete: true
