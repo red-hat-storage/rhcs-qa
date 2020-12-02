@@ -41,14 +41,13 @@ def task(ctx, config):
     nfs_version = config['nfs-version']
     mount_dir = config['mount-dir']
     branch = config.get("branch", "master")
-
+    nfs_test_config = {'config': config.get('config')}
     log.info('got test_name: %s' % test_name)
     log.info('got nfs version: %s' % nfs_version)
     log.info('got mount dir: %s' % mount_dir)
 
     remotes = ctx.cluster.only(teuthology.is_type('mon'))
     mon = [remote for remote, roles_for_host in remotes.remotes.items()]
-
     rgw_remote = ctx.cluster.only(teuthology.is_type('rgw'))
     rgw = [remote for remote, roles_for_host in rgw_remote.remotes.items()]
 
@@ -59,59 +58,43 @@ def task(ctx, config):
                          'nfs-ganesha-selinux'])
 
     # clone the repo
-
     rgw[0].run(args=['sudo', 'rm', '-rf', 'nfs_ganesha_rgw'], check_status=False)
     rgw[0].run(args=['sudo', 'rm', '-rf', run.Raw('/tmp/nfs-ganesh-rgw_log*')], check_status=False)
     rgw[0].run(args=['mkdir', '-p', 'nfs_ganesha_rgw'])
 
     # stop native nfs_ganesha service.
-
     rgw[0].run(args=['sudo', 'systemctl', 'stop', 'nfs-server.service'])  # systemctl stop nfs-server.service
     rgw[0].run(args=['sudo', 'systemctl', 'disable', 'nfs-server.service'])  # systemctl disable nfs-server.service
-
     out = io.StringIO()
     mon[0].run(args=['sudo', 'cat', '/etc/ceph/ceph.client.admin.keyring'], stdout=out)
     v_as_out = out.read()
     teuthology.create_file(rgw[0], '/etc/ceph/ceph.client.admin.keyring', data=v_as_out, sudo=True)
 
     # parsing nfs_ganesha conf file
-
     out = io.StringIO()
     rgw[0].run(args=['sudo', 'cat', '/etc/ganesha/ganesha.conf'],
                stdout=out)
     v_as_out = out.readlines()
-
     clean = lambda x: re.sub('[^A-Za-z0-9]+', '', x)
 
     for content in v_as_out:
-
         if 'Access_Key_Id' in content:
             access_key = clean(content.split('=')[1])
-
         if 'Secret_Access_Key' in content:
             secret_key = clean(content.split('=')[1])
-
         if 'User_Id' in content:
             rgw_user_id = clean(content.split('=')[1])
-
         if 'Pseudo' in content:
             pseudo = content.split('=')[1].strip(' ').strip('\n').strip(' ').strip(';').strip('/')
 
     rgw[0].run(args=['sudo', 'setenforce', '1'])
-
     log.info('restarting nfs-ganesha service')
-
     rgw[0].run(args=['sudo', 'systemctl', 'restart', 'nfs-ganesha.service'])
-
     time.sleep(60)
-
     rgw[0].run(args=['cd', 'nfs_ganesha_rgw', run.Raw(';'), 'git', 'clone',
                      'https://github.com/red-hat-storage/ceph-qe-scripts.git'])
-
     rgw[0].run(args=['cd', 'nfs_ganesha_rgw/ceph-qe-scripts', run.Raw(';'), 'git', 'checkout', '%s' % branch])
-
     rgw[0].run(args=['python3', '-m', 'venv', 'venv'])
-
     rgw[0].run(
         args=[
             'source',
@@ -132,7 +115,6 @@ def task(ctx, config):
             'deactivate'])
 
     # copy rgw user details (yaml format) to nfs node or rgw node
-
     rgw_user_config = dict(user_id=rgw_user_id,
                            access_key=access_key,
                            secret_key=secret_key,
@@ -144,31 +126,39 @@ def task(ctx, config):
                            Pseudo=pseudo
                            )
 
+    client_config_destination = 'nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/'
+
     rgw_user_config_fname = 'rgw_user.yaml'
-
     temp_yaml_file = rgw_user_config_fname + "_" + str(os.getpid()) + pwd.getpwuid(os.getuid()).pw_name
-
     log.info('creating rgw_user_config_fname: %s' % rgw_user_config)
     local_file = '/tmp/' + temp_yaml_file
     with open(local_file, 'w') as outfile:
         outfile.write(yaml.dump(rgw_user_config, default_flow_style=False))
-
     log.info('copying rgw_user_config_fname to the client node')
-    destination_location = 'nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/' + rgw_user_config_fname
-    rgw[0].put_file(local_file, destination_location)
-
+    rgw_user_config_destination = client_config_destination + rgw_user_config_fname
+    rgw[0].put_file(local_file, rgw_user_config_destination)
     rgw[0].run(args=[run.Raw('sudo rm -rf %s' % local_file)], check_status=False)
 
-    # run the test
+    log.info('creating nfs test config file')
+    log.info('creating configuration from data: %s' % nfs_test_config)
+    local_file = os.path.join('/tmp/',
+                              config.get('test-name') + "_" + str(os.getpid()) + pwd.getpwuid(os.getuid()).pw_name)
+    with open(local_file, 'w') as outfile:
+        outfile.write(yaml.dump(nfs_test_config, default_flow_style=False))
+    log.info('local_file: %s' % local_file)
+    log.info('copying nfs test config temp yaml to the client node')
+    nfs_test_config_file = client_config_destination + test_name
+    rgw[0].put_file(local_file, nfs_test_config_file)
 
+    # run the test
     rgw[0].run(
         args=[
             'source',
             'venv/bin/activate',
             run.Raw(';'),
             run.Raw('python3 nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/%s '
-            '-r nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/rgw_user.yaml '
-            '-c nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/%s ' % (script_name, test_name)),
+                    '-r nfs_ganesha_rgw/ceph-qe-scripts/rgw/v2/tests/nfs_ganesha/config/rgw_user.yaml '
+                    '-c %s ' % (script_name, nfs_test_config_file)),
             run.Raw(';'),
             'deactivate'])
 
@@ -176,12 +166,8 @@ def task(ctx, config):
         yield
     finally:
         log.info("Deleting the test soot")
-
         rgw[0].run(args=['sudo', 'umount', run.Raw('%s' % mount_dir)])
-
         cleanup = lambda x: rgw[0].run(args=[run.Raw('sudo rm -rf %s' % x)])
-
         soot = ['venv', 'rgw-tests', 'test_data' '*.json', 'Download.*', 'Download', '*.mpFile', 'x*', 'key.*', 'Mp.*',
                 '*.key.*']
-
         list(map(cleanup, soot))
