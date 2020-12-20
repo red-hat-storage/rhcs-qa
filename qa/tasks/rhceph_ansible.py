@@ -203,7 +203,8 @@ class CephAnsible(Task):
         extra_vars = dict()
         extra_vars.update(self.config.get('vars', dict()))
 
-        if extra_vars.get('dashboard_enabled'):
+        if extra_vars.get('dashboard_enabled') and \
+                self.rhbuild.startswith('4'):
             # db - dashboard
             db_container_info = self.dashboard_prequisites()
             extra_vars.update(db_container_info)
