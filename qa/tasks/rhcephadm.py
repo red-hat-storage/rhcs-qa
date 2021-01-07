@@ -12,6 +12,7 @@ import re
 import uuid
 import yaml
 
+from time import sleep
 from io import BytesIO, StringIO
 import toml
 from tarfile import ReadError
@@ -415,10 +416,19 @@ def ceph_bootstrap(ctx, config, registry):
 
         # bootstrap
         log.info('Bootstrapping...')
-        cmd = [
-            'sudo',
-            ctx.cephadm,
-            '--image', ctx.ceph[cluster_name].image,
+
+        image_src = []
+        if ctx.ceph[cluster_name].image:
+            image_src = ['--image', ctx.ceph[cluster_name].image]
+
+        registry_src = []
+        if hasattr(ctx.ceph[cluster_name], 'registry'):
+            creds = ctx.ceph[cluster_name].registry
+            registry_src = ["--registry-url", creds['registry'],
+                            "--registry-username", creds['username'],
+                            "--registry-password", creds['password']]
+
+        cmd = ['sudo', ctx.cephadm] + image_src + [
             '-v',
             'bootstrap',
             '--fsid', fsid,
@@ -427,7 +437,7 @@ def ceph_bootstrap(ctx, config, registry):
             '--output-keyring',
             '/etc/ceph/{}.client.admin.keyring'.format(cluster_name),
             '--output-pub-ssh-key', '{}/{}.pub'.format(testdir, cluster_name),
-        ]
+        ] + registry_src
         if not ctx.ceph[cluster_name].roleless:
             cmd += [
                 '--mon-id', first_mon,
@@ -448,6 +458,18 @@ def ceph_bootstrap(ctx, config, registry):
             '/etc/ceph/{}.client.admin.keyring'.format(cluster_name),
         ]
         bootstrap_remote.run(args=cmd)
+
+        # Get container image
+        if not image_src:
+            try:
+                out = bootstrap_remote.sh("sudo {} ls ".format(ctx.cephadm))
+                out = json.loads(out)
+                ctx.ceph[cluster_name].image =\
+                    [con["container_image_name"]
+                     for con in out if "mon" in con['name']][-1]
+                log.info('Default cluster image is been used %s' % ctx.ceph[cluster_name].image)
+            except Exception as err:
+                raise Exception(err)
 
         # fetch keys and configs
         log.info('Fetching config...')
@@ -491,6 +513,21 @@ def ceph_bootstrap(ctx, config, registry):
             remote.write_file(
                 path='/etc/ceph/{}.client.admin.keyring'.format(cluster_name),
                 data=ctx.ceph[cluster_name].admin_keyring)
+
+            # container tool login
+            if hasattr(ctx.ceph[cluster_name], 'registry'):
+                creds = ctx.ceph[cluster_name].registry
+                container = "docker"
+                if bootstrap_remote.os.version.startswith('8'):
+                    container = "podman"
+                remote.sh(
+                    "sudo {container} login -p {passwd} -u {user} {registry}".format(
+                        container=container,
+                        passwd=creds.get('password'),
+                        user=creds.get('username'),
+                        registry=creds.get('registry')
+                    )
+                )
 
             log.info('Adding host %s to orchestrator...' % remote.shortname)
             _shell(ctx, cluster_name, remote, [
@@ -679,13 +716,25 @@ def ceph_osds(ctx, config):
             log.info('Deploying %s on %s with %s...' % (
                 osd, remote.shortname, dev))
             _shell(ctx, cluster_name, remote, [
-                'ceph', 'orch', 'device', 'ls', '--refresh'])
-            _shell(ctx, cluster_name, remote, [
                 'ceph-volume', 'lvm', 'zap', dev])
-            _shell(ctx, cluster_name, remote, [
-                'ceph', 'orch', 'daemon', 'add', 'osd',
-                remote.shortname + ':' + short_dev
-            ])
+
+            # _shell(ctx, cluster_name, remote, [
+            #     'ceph', 'orch', 'daemon', 'add', 'osd',
+            #     remote.shortname + ':' + short_dev
+            # ])
+
+            # Work-around for BZ-1884129
+            try:
+                _shell(ctx, cluster_name, remote, [
+                    'ceph', 'orch', 'daemon', 'add', 'osd',
+                    remote.shortname + ':' + short_dev
+                ])
+            except:
+                _shell(ctx, cluster_name, remote, [
+                    'ceph', 'orch', 'daemon', 'add', 'osd',
+                    remote.shortname + ':' + short_dev
+                ])
+
             ctx.daemons.register_daemon(
                 remote, 'osd', id_,
                 cluster=cluster_name,
@@ -1258,13 +1307,23 @@ def task(ctx, config):
     containers = config.get('containers', {})
     mirrors = containers.get('registry_mirrors', {})
     container_image_name = containers.get('image', container_image_name)
+
+    registry = containers.get('registry')
+    if registry:
+        creds = teuth_config.get('registries', {}).get(registry)
+        if not creds:
+            raise Exception("[{}] Registry not found".format(registry))
+        ctx.ceph[cluster_name].registry = {'registry': registry,
+                                           'username': creds['username'],
+                                           'password': creds['password']}
+
     container_registry_mirror = mirrors.get('docker.io',
                                             container_registry_mirror)
 
     if not hasattr(ctx.ceph[cluster_name], 'image'):
         ctx.ceph[cluster_name].image = container_image_name
     ref = None
-    if not ctx.ceph[cluster_name].image:
+    if not ctx.ceph[cluster_name].image and not registry:
         if not container_image_name:
             raise Exception("Configuration error occurred. "
                             "The 'image' value is undefined for 'cephadm' task. "
@@ -1285,7 +1344,8 @@ def task(ctx, config):
             branch = config.get('branch', 'master')
             ref = branch
             ctx.ceph[cluster_name].image = container_image_name + ':' + branch
-    log.info('Cluster image is %s' % ctx.ceph[cluster_name].image)
+    if ctx.ceph[cluster_name].image:
+        log.info('Custom cluster image is been used %s' % ctx.ceph[cluster_name].image)
 
     with contextutil.nested(
             #if the cluster is already bootstrapped bypass corresponding methods
