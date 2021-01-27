@@ -17,7 +17,7 @@ DIR = {"v1": {"script": "rgw/v1/tests/s3/",
        "v2": {"script": "rgw/v2/tests/s3_swift/",
               "config": "rgw/v2/tests/s3_swift/configs"}}
 
-WIP_BRANCH = None
+WIP_BRANCH = 'multisite_fixes'
 MASTER_BRANCH = 'master'
 
 
